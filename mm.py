@@ -13,34 +13,34 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 
 class AbstractTradingAPI(abc.ABC):
-@abc.abstractmethod
-def get_price(self) -> float:
-pass
+    @abc.abstractmethod
+    def get_price(self) -> float:
+        pass
 
-@abc.abstractmethod
-def place_order(self, action: str, side: str, price: float, quantity: int, expiration_ts: int = None) -> str:
-pass
+    @abc.abstractmethod
+    def place_order(self, action: str, side: str, price: float, quantity: int, expiration_ts: int = None) -> str:
+        pass
 
-@abc.abstractmethod
-def cancel_order(self, order_id: str) -> bool:
-pass
+    @abc.abstractmethod
+    def cancel_order(self, order_id: str) -> bool:
+        pass
 
-@abc.abstractmethod
-def get_position(self) -> int:
-pass
+    @abc.abstractmethod
+    def get_position(self) -> int:
+        pass
 
-@abc.abstractmethod
-def get_orders(self) -> List[Dict]:
-pass
+    @abc.abstractmethod
+    def get_orders(self) -> List[Dict]:
+        pass
 
 class KalshiTradingAPI(AbstractTradingAPI):
-def init(
-self,
-market_ticker: str,
-base_url: str,
-logger: logging.Logger,
-mode: str = 'demo'
-):
+    def __init__(
+        self,
+        market_ticker: str,
+        base_url: str,
+        logger: logging.Logger,
+        mode: str = 'demo'
+    ):
 self.market_ticker = market_ticker
 self.logger = logger
 prefix = 'DEMO_' if mode == 'demo' else 'LIVE_'
@@ -190,21 +190,21 @@ self.logger.info(f"Retrieved {len(orders)} orders")
 return orders
 
 class AvellanedaMarketMaker:
-def init(
-self,
-logger: logging.Logger,
-api: AbstractTradingAPI,
-gamma: float,
-k: float,
-sigma: float,
-T: float,
-max_position: int,
-order_expiration: int,
-min_spread: float = 0.01,
-position_limit_buffer: float = 0.1,
-inventory_skew_factor: float = 0.01,
-trade_side: str = "yes"
-):
+    def __init__(
+        self,
+        logger: logging.Logger,
+        api: AbstractTradingAPI,
+        gamma: float,
+        k: float,
+        sigma: float,
+        T: float,
+        max_position: int,
+        order_expiration: int,
+        min_spread: float = 0.01,
+        position_limit_buffer: float = 0.1,
+        inventory_skew_factor: float = 0.01,
+        trade_side: str = "yes"
+    ):
 self.api = api
 self.logger = logger
 self.base_gamma = gamma
