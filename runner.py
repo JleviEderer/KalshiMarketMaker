@@ -12,13 +12,12 @@ def load_config(config_file):
     with open(config_file, 'r') as f:
         return yaml.safe_load(f)
 
-def create_api(api_config, logger):
+def create_api(api_config, logger, mode):
     return KalshiTradingAPI(
-        email=os.getenv("KALSHI_EMAIL"),
-        password=os.getenv("KALSHI_PASSWORD"),
         market_ticker=api_config['market_ticker'],
-        base_url=os.getenv("KALSHI_BASE_URL"),
+        base_url=os.getenv(f"{mode.upper()}_KALSHI_BASE_URL"),
         logger=logger,
+        mode=mode
     )
 
 def create_market_maker(mm_config, api, logger):
@@ -38,44 +37,36 @@ def create_market_maker(mm_config, api, logger):
     )
 
 def run_strategy(config_name: str, config: Dict):
-    # Create a logger for this specific strategy
     logger = logging.getLogger(f"Strategy_{config_name}")
     logger.setLevel(config.get('log_level', 'INFO'))
 
-    # Create file handler
     fh = logging.FileHandler(f"{config_name}.log")
     fh.setLevel(config.get('log_level', 'INFO'))
-    
-    # Create console handler
+
     ch = logging.StreamHandler()
     ch.setLevel(config.get('log_level', 'INFO'))
-    
-    # Create formatter
+
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     fh.setFormatter(formatter)
     ch.setFormatter(formatter)
-    
-    # Add handlers to logger
+
     logger.addHandler(fh)
     logger.addHandler(ch)
 
     logger.info(f"Starting strategy: {config_name}")
 
-    # Create API
-    api = create_api(config['api'], logger)
+    mode = config.get('mode', 'demo')
+    api = create_api(config['api'], logger, mode)
 
-    # Create market maker
     market_maker = create_market_maker(config['market_maker'], api, logger)
 
     try:
-        # Run market maker
         market_maker.run(config.get('dt', 1.0))
     except KeyboardInterrupt:
         logger.info("Market maker stopped by user")
     except Exception as e:
         logger.error(f"An error occurred: {str(e)}")
     finally:
-        # Ensure logout happens even if an exception occurs
         api.logout()
 
 if __name__ == "__main__":
@@ -83,18 +74,14 @@ if __name__ == "__main__":
     parser.add_argument("--config", type=str, default="config.yaml", help="Path to config file")
     args = parser.parse_args()
 
-    # Load all configurations
     configs = load_config(args.config)
 
-    # Load environment variables
     load_dotenv()
 
-    # Print the name of every strategy being run
     print("Starting the following strategies:")
     for config_name in configs:
         print(f"- {config_name}")
 
-    # Run all strategies in parallel using ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=len(configs)) as executor:
         for config_name, config in configs.items():
             executor.submit(run_strategy, config_name, config)
