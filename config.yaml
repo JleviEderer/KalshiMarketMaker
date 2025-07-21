@@ -45,3 +45,53 @@ FEDDECISION-24NOV-H0:
     position_limit_buffer: 0.1
     inventory_skew_factor: 0.001
   dt: 2.0
+  kxhighlax:
+    api:
+      market_ticker: kxhighlax
+      trade_side: "yes"
+    market_maker:
+      max_position: 5
+      order_expiration: 28800
+      gamma: 0.05
+      k: 1.5
+      sigma: 0.001
+      T: 28800
+      min_spread: 0.03
+      position_limit_buffer: 0.1
+      inventory_skew_factor: 0.001
+    dt: 2.0
+    mode: demo
+
+  kxhighphil:
+    api:
+      market_ticker: kxhighphil
+      trade_side: "yes"
+    market_maker:
+      max_position: 5
+      order_expiration: 28800
+      gamma: 0.05
+      k: 1.5
+      sigma: 0.001
+      T: 28800
+      min_spread: 0.03
+      position_limit_buffer: 0.1
+      inventory_skew_factor: 0.001
+    dt: 2.0
+    mode: demo
+
+  kxhighmia:
+    api:
+      market_ticker: kxhighmia
+      trade_side: "yes"
+    market_maker:
+      max_position: 5
+      order_expiration: 28800
+      gamma: 0.05
+      k: 1.5
+      sigma: 0.001
+      T: 28800
+      min_spread: 0.03
+      position_limit_buffer: 0.1
+      inventory_skew_factor: 0.001
+    dt: 2.0
+    mode: demo
