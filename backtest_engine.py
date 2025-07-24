@@ -280,8 +280,9 @@ class KalshiBacktester:
         return merged_data
 
         def run_backtest(self, series_ticker: str, market_ticker: str, start_date: datetime, end_date: datetime) -> Dict:
-            # Pass both tickers to the data fetcher
-            market_data = self.fetch_historical_data(series_ticker, market_ticker, start_date, end_date)
+        # Pass both tickers to the data fetcher
+        market_data = self.fetch_historical_data(market_ticker, start_date, end_date)
+        
         if not market_data:
             return {'total_trades': 0, 'pnl_series': [], 'position_series': [], 'timestamps': [], 'final_pnl': 0, 'trades': [], 'win_rate': 0, 'sharpe_ratio': 0, 'max_drawdown': 0}
 
