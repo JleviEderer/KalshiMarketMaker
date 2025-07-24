@@ -279,7 +279,7 @@ class KalshiBacktester:
             merged_data.append(MarketData(timestamp=ts, yes_bid=row['yes_bid']/100, yes_ask=row['yes_ask']/100, no_bid=row['no_bid']/100, no_ask=row['no_ask']/100, trades=relevant_trades))
         return merged_data
 
-        def run_backtest(self, series_ticker: str, market_ticker: str, start_date: datetime, end_date: datetime) -> Dict:
+    def run_backtest(self, series_ticker: str, market_ticker: str, start_date: datetime, end_date: datetime) -> Dict:
         # Pass both tickers to the data fetcher
         market_data = self.fetch_historical_data(market_ticker, start_date, end_date)
         
