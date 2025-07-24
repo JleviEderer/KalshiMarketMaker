@@ -1,97 +1,17 @@
-RATECUTCOUNT-24DEC31-T4:
+Baseball_Minnesota_Test:
   api:
-    market_ticker: RATECUTCOUNT-24DEC31-T4
+    market_ticker: KXMLSGAME-25JUL26STLMIN-MIN
     trade_side: "yes"
   market_maker:
-    max_position: 5
-    order_expiration: 28800 # 8 hours
-    gamma: 0.1
-    k: 1.5
-    sigma: 0.001
-    T: 28800 # 8 hours
-    min_spread: 0.0
+    max_position: 2        # Conservative
+    order_expiration: 600  # 10 minutes (game could end soon)
+    gamma: 0.08           # Higher gamma for sports volatility
+    k: 2.0                # Higher k for sports
+    sigma: 0.005          # Higher volatility for live sports
+    T: 180                # 3 minutes test
+    min_spread: 0.01      # 0.5¢ minimum (super tight for this liquidity)
     position_limit_buffer: 0.1
-    inventory_skew_factor: 0.001
-  dt: 2.0
+    inventory_skew_factor: 0.002
+  dt: 1.0                 # Faster updates for live sports
+  mode: live
 
-FEDDECISION-24NOV-C25:
-  api:
-    market_ticker: FEDDECISION-24NOV-C25
-    trade_side: "yes"
-  market_maker:
-    max_position: 5
-    order_expiration: 28800 # 8 hours
-    gamma: 0.1
-    k: 1.5
-    sigma: 0.001
-    T: 28800 # 8 hours
-    min_spread: 0.0
-    position_limit_buffer: 0.1
-    inventory_skew_factor: 0.001
-  dt: 2.0
-
-FEDDECISION-24NOV-H0:
-  api:
-    market_ticker: FEDDECISION-24NOV-H0
-    trade_side: "yes"
-  market_maker:
-    max_position: 5
-    order_expiration: 28800 # 8 hours
-    gamma: 0.1
-    k: 1.5
-    sigma: 0.001
-    T: 28800 # 8 hours
-    min_spread: 0.0
-    position_limit_buffer: 0.1
-    inventory_skew_factor: 0.001
-  dt: 2.0
-  kxhighlax:
-    api:
-      market_ticker: kxhighlax
-      trade_side: "yes"
-    market_maker:
-      max_position: 5
-      order_expiration: 28800
-      gamma: 0.05
-      k: 1.5
-      sigma: 0.001
-      T: 28800
-      min_spread: 0.03
-      position_limit_buffer: 0.1
-      inventory_skew_factor: 0.001
-    dt: 2.0
-    mode: demo
-
-  kxhighphil:
-    api:
-      market_ticker: kxhighphil
-      trade_side: "yes"
-    market_maker:
-      max_position: 5
-      order_expiration: 28800
-      gamma: 0.05
-      k: 1.5
-      sigma: 0.001
-      T: 28800
-      min_spread: 0.03
-      position_limit_buffer: 0.1
-      inventory_skew_factor: 0.001
-    dt: 2.0
-    mode: demo
-
-  kxhighmia:
-    api:
-      market_ticker: kxhighmia
-      trade_side: "yes"
-    market_maker:
-      max_position: 5
-      order_expiration: 28800
-      gamma: 0.05
-      k: 1.5
-      sigma: 0.001
-      T: 28800
-      min_spread: 0.03
-      position_limit_buffer: 0.1
-      inventory_skew_factor: 0.001
-    dt: 2.0
-    mode: demo
