@@ -3,3 +3,15 @@ modules = ["python-3.12", "bash"]
 [nix]
 channel = "stable-24_05"
 packages = ["arrow-cpp", "cairo", "cargo", "ffmpeg-full", "freetype", "ghostscript", "glibcLocales", "gobject-introspection", "gtk3", "libiconv", "libxcrypt", "libyaml", "openssl", "pkg-config", "qhull", "rustc", "tcl", "tk", "zip"]
+
+[workflows]
+runButton = "Jupyter Notebook"
+
+[[workflows.workflow]]
+name = "Jupyter Notebook"
+author = 39393379
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "jupyter notebook --ip=0.0.0.0 --port=5000 --no-browser --allow-root"
