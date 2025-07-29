@@ -2,4 +2,4 @@ modules = ["python-3.12", "bash"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["cairo", "cargo", "ffmpeg-full", "freetype", "ghostscript", "glibcLocales", "gobject-introspection", "gtk3", "libiconv", "libxcrypt", "libyaml", "openssl", "pkg-config", "qhull", "rustc", "tcl", "tk", "zip"]
+packages = ["arrow-cpp", "cairo", "cargo", "ffmpeg-full", "freetype", "ghostscript", "glibcLocales", "gobject-introspection", "gtk3", "libiconv", "libxcrypt", "libyaml", "openssl", "pkg-config", "qhull", "rustc", "tcl", "tk", "zip"]
