@@ -13,7 +13,7 @@ class BacktestConfig:
     position_limit_buffer: float = 0.1
     inventory_skew_factor: float = 0.01
     dt: float = 2.0
-    strategy: str = 'avellaneda' # Use the A-S model
+    strategy: str = 'simple' # Use the simple model
     
     # --- Fair Value Model Parameters ---
     sma_window: int = 1

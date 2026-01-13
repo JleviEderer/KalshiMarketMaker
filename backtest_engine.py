@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import time
 from typing import Dict, List
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import os
 
@@ -93,31 +93,7 @@ class MockTradingAPI(AbstractTradingAPI):
         # Transaction costs are applied to every fill
         self.cash -= self.config.transaction_cost
 
-class KalshiBacktester:
-    """Main backtesting engine"""
-    def __init__(self, config: BacktestConfig):
-        self.config = config
-        self.logger = logging.getLogger('Backtester')
-
-    def find_settled_markets(self, file_path: str, search_term: str = None) -> List[Dict]:
-        import pyarrow.parquet as pq
-
-        self.logger.info(f"Searching for '{search_term}' in local file using memory-safe chunking...")
-        try:
-            # This set will store tickers we've already found to prevent duplicates
-            found_tickers = set()
-            unique_markets = []
-
-            # Define only the columns needed for the search
-            columns_to_load = ['ticker_name', 'status', 'date']
-
-            # Open the Parquet file without loading it all into memory
-            parquet_file = pq.ParquetFile(file_path)
-
-            # Iterate through the file in chunks (row groups)
-            for i in range(parquet_file.num_row_groups):
-                table_chunk = parquet_file.read_row_group(i, columns=columns_to_load)
-                df_chunk = table_chunk.to_pandas()
+as()
 
                 settled_chunk = df_chunk[df_chunk['status'].isin(['settled', 'closed', 'finalized'])].copy()
 
@@ -276,16 +252,13 @@ class KalshiBacktester:
             fair_value = mid_price # Default to mid_price
 
             # Only calculate SMA if we have enough data points
-            if len(mid_price_history) >= self.config.sma_window:
-                # Create a pandas Series to calculate the rolling SMA
+            if len(mid_price_history) >= self.config.sma_window: # We can reuse the sma_window parameter name for now
                 price_series = pd.Series(mid_price_history)
-                # Calculate SMA and get the most recent value
-                sma = price_series.rolling(window=self.config.sma_window).mean().iloc[-1]
-
-                # Ensure SMA is a valid number before using it
-                if pd.notna(sma):
-                        fair_value = sma
-                        sma_usage_count += 1 # Add this line
+                # Calculate EMA instead of SMA
+                ema = price_series.ewm(span=self.config.sma_window, adjust=False).mean().iloc[-1]
+                if pd.notna(ema):
+                    fair_value = ema
+                sma_usage_count += 1 # Add this line
 
             fair_value_history.append(fair_value)
 
@@ -310,6 +283,25 @@ class KalshiBacktester:
         # --- ADD THIS BLOCK to calculate the new metrics ---
         round_trip_pnls = self._calculate_trade_pnls(mock_api.trades, final_market_price)
         final_position = results['position_series'][-1] if results['position_series'] else 0
+        # --- END OF BLOCK ---
+
+        # --- ADD THIS BLOCK FOR INTRA-DAY PNL CALCULATION ---
+        pnl_series = pd.Series(results['pnl_series'], index=results['timestamps'])
+        if not pnl_series.empty:
+            first_hour_end = pnl_series.index[0] + timedelta(hours=1)
+            last_hour_start = pnl_series.index[-1] - timedelta(hours=1)
+
+            first_hour_pnl = pnl_series.loc[pnl_series.index <= first_hour_end]
+            middle_pnl = pnl_series.loc[(pnl_series.index > first_hour_end) & (pnl_series.index < last_hour_start)]
+            last_hour_pnl = pnl_series.loc[pnl_series.index >= last_hour_start]
+
+            results['pnl_first_hour'] = first_hour_pnl.iloc[-1] - pnl_series.iloc[0] if not first_hour_pnl.empty else 0
+            results['pnl_middle'] = middle_pnl.iloc[-1] - first_hour_pnl.iloc[-1] if not middle_pnl.empty and not first_hour_pnl.empty else 0
+            results['pnl_last_hour'] = pnl_series.iloc[-1] - middle_pnl.iloc[-1] if not last_hour_pnl.empty and not middle_pnl.empty else 0
+        else:
+            results['pnl_first_hour'] = 0
+            results['pnl_middle'] = 0
+            results['pnl_last_hour'] = 0
         # --- END OF BLOCK ---
 
         results.update({
@@ -348,7 +340,6 @@ class KalshiBacktester:
         print("-"*50)
         # --- END OF BLOCK ---
 
-        return results
         return results
 
     def generate_report(self, results: Dict, market_ticker: str, start_date: datetime, end_date: datetime) -> str:
@@ -400,18 +391,27 @@ class KalshiBacktester:
     """
         return report.strip()
 
+    # In backtest_engine.py
+
     def log_results_to_csv(self, results: Dict, market_ticker: str, start_date: datetime, end_date: datetime, log_file: str = "backtest_results_log.csv"):
         """Appends the results of a backtest run to a master CSV log file."""
 
-        # --- FLATTEN THE DATA FOR LOGGING ---
+        # --- DEFINE THE MASTER COLUMN ORDER ---
+        header = [
+            'run_timestamp', 'market_ticker', 'strategy', 'start_date', 'end_date',
+            'final_pnl', 'return_pct', 'win_rate', 'sharpe_ratio', 'max_drawdown',
+            'total_fills', 'total_market_trades', 'round_trip_trades', 'final_position',
+            'pnl_first_hour', 'pnl_middle', 'pnl_last_hour',
+            'sma_window', 'fixed_spread', 'gamma', 'sigma', 'k', 'min_spread',
+            'inventory_skew_factor', 'max_position'
+        ]
+
         log_data = {
             'run_timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'market_ticker': market_ticker,
             'strategy': self.config.strategy,
             'start_date': start_date.strftime('%Y-%m-%d %H:%M'),
             'end_date': end_date.strftime('%Y-%m-%d %H:%M'),
-
-            # --- Key Performance Metrics ---
             'final_pnl': results.get('final_pnl', 0),
             'return_pct': (results.get('final_pnl', 0) / self.config.initial_capital) * 100,
             'win_rate': results.get('win_rate', 0),
@@ -421,9 +421,10 @@ class KalshiBacktester:
             'total_market_trades': results.get('total_market_trades', 0),
             'round_trip_trades': results.get('round_trip_trades', 0),
             'final_position': results.get('final_position', 0),
-
-            # --- Strategy Parameters ---
-            'sma_window': self.config.sma_window if self.config.strategy == 'avellaneda' else None,
+            'pnl_first_hour': results.get('pnl_first_hour', 0),
+            'pnl_middle': results.get('pnl_middle', 0),
+            'pnl_last_hour': results.get('pnl_last_hour', 0),
+            'sma_window': self.config.sma_window,
             'fixed_spread': self.config.fixed_spread if self.config.strategy == 'simple' else None,
             'gamma': self.config.gamma if self.config.strategy == 'avellaneda' else None,
             'sigma': self.config.sigma if self.config.strategy == 'avellaneda' else None,
@@ -433,33 +434,21 @@ class KalshiBacktester:
             'max_position': self.config.max_position,
         }
 
-        # --- ADD THIS DEBUGGING BLOCK ---
-        print("\n--- DEBUG: INSIDE LOG_RESULTS_TO_CSV ---")
-        print(f"Attempting to write data for: {market_ticker}")
-
-        # Manually write to a simple text file to test file I/O
-        with open("debug_log_test.txt", "a") as f:
-            f.write(f"LOGGING: {log_data['run_timestamp']} - {log_data['market_ticker']}\n")
-
-        print("--- DEBUG: Manually wrote to debug_log_test.txt ---\n")
-        # --- END DEBUGGING BLOCK ---
-
-        # --- APPEND TO CSV ---
         try:
-            df = pd.DataFrame([log_data])
-            # If the file doesn't exist, create it with a header. Otherwise, append.
-            if not os.path.exists(log_file):
-                df.to_csv(log_file, index=False, header=True)
-            else:
-                df.to_csv(log_file, index=False, header=False, mode='a')
+            # Create a DataFrame with the specified column order
+            df = pd.DataFrame([log_data], columns=header)
+
+            file_exists = os.path.exists(log_file)
+
+            # Write with header only if the file is new
+            df.to_csv(log_file, index=False, header=not file_exists, mode='a')
 
             self.logger.info(f"Results for {market_ticker} appended to {log_file}")
 
         except Exception as e:
             self.logger.error(f"Failed to log results to CSV: {e}")
             raise e
-    
-
+            
     def _calculate_trade_pnls(self, trades: List[Trade], final_market_price: float) -> List[float]:
         """
         Processes a flat list of fills into NET PnLs for each round-trip trade.
