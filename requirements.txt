@@ -6,7 +6,6 @@ numpy==1.26.4  # For calculations
 matplotlib==3.8.4  # For plots
 seaborn==0.13.2  # For enhanced visuals
 plotly==5.22.0  # For interactive charts
-pyarrow==16.1.0
 pyyaml
 cryptography
 matplotlib

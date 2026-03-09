@@ -12,7 +12,7 @@ if __name__ == "__main__":
     print("🔍 KALSHI BACKTESTER - OFFLINE DISCOVERY & RESEARCH TOOL")
     print("=" * 60)
 
-    market_data_file = './kalshi_all_markets_archive.parquet'
+    market_data_file = './kalshi_all_markets_archive.csv'
 
     if not os.path.exists(market_data_file):
         print(f"❌ Market data file not found: {market_data_file}")
@@ -44,6 +44,8 @@ if __name__ == "__main__":
             choice = int(input("\n👉 Enter the number of the market you want to test: "))
             selected_market = settled_markets[choice - 1]
             selected_ticker = selected_market['ticker']
+            # Add this line to get the series_ticker
+            selected_series_ticker = selected_market['series_ticker']
 
             date_str = input(f"👉 Enter the event date for {selected_ticker} (YYYY-MM-DD): ")
             event_date = datetime.strptime(date_str, "%Y-%m-%d")
@@ -53,26 +55,27 @@ if __name__ == "__main__":
 
         print(f"\n🎯 Selected market: {selected_ticker}")
 
-        # Always load the main config from the file
-        config = BacktestConfig()
-        # Handle event-specific timing without overriding strategy parameters
         if "FED" in selected_ticker.upper():
+            config = BacktestConfig(gamma=0.05, max_position=20, dt=1.0, sigma=0.01, T=14400, min_spread=0.01)
             event_time = event_date.replace(hour=19, minute=0)
-        elif "CPI" in selected_ticker.upper(): # Add this block for CPI
-            event_time = event_date.replace(hour=12, minute=30)
+            start_time, end_time = event_time - timedelta(hours=4), event_time
         else:
-            # Default for other events
+            config = BacktestConfig()
             event_time = event_date.replace(hour=12, minute=0)
-
-        start_time, end_time = event_time - timedelta(hours=4), event_time
+            start_time, end_time = event_time - timedelta(hours=4), event_time
 
         print(f"⚙️  Running with preset config. Test window: {start_time} to {end_time} UTC")
 
         backtester.config = config
         # Pass the new series_ticker to the backtester
-        results = backtester.run_backtest(selected_ticker, start_date=start_time, end_date=end_time)
+        results = backtester.run_backtest(
+            series_ticker=selected_series_ticker,
+            market_ticker=selected_ticker,
+            start_date=start_time,
+            end_date=end_time
+        )
 
-        report = backtester.generate_report(results, selected_ticker, start_date=start_time, end_date=end_time)
+        report = backtester.generate_report(results, selected_ticker)
         print("\n" + "="*80 + "\n📊 BACKTEST RESULTS\n" + "="*80)
         print(report)
 
@@ -93,13 +96,5 @@ if __name__ == "__main__":
             plt.tight_layout()
             plt.savefig(f"backtest_{selected_ticker}.png")
             print(f"\n📈 Chart saved to backtest_{selected_ticker}.png")
-
-             # --- ADD THE NEW LOGGER CALL HERE ---
-            backtester.log_results_to_csv(results, selected_ticker, start_date=start_time, end_date=end_time)
-
-            if results.get('tradelog_path'):
-                print(f"🗂️  Detailed trade log saved to {results['tradelog_path']}")
-
         except Exception as e:
             print(f"\nCould not generate plots. Error: {e}")
-        
