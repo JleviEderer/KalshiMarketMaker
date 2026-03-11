@@ -4,7 +4,7 @@ This repo now includes a local MCP server for Kalshi historical data and backtes
 
 In simple terms:
 
-- `server.py` is the tool program
+- `kalshi-research-mcp` is the tool command after install
 - Claude Code or another MCP client can launch it
 - the tools let an AI download archive data, search settled markets, and run backtests
 
@@ -12,7 +12,7 @@ This is for research. It is not a live-trading MCP.
 
 ## What This Repo Is
 
-The MCP server exposes a small set of read-only tools:
+The MCP server exposes a small set of research tools:
 
 - `server_info`
 - `download_archive`
@@ -31,7 +31,7 @@ The repo still contains older live-trading scripts such as `mm.py` and `runner.p
 If you are not a programmer, the easiest mental model is:
 
 - this repo is a toolbox
-- `server.py` is the box that opens the tools
+- `kalshi-research-mcp` is the box that opens the tools
 - Claude Code is the app that uses those tools
 - MCP is the connection between Claude and the toolbox
 
@@ -139,7 +139,8 @@ That starts the MCP server over `stdio`, which is the normal local setup for Cla
 ## Dependency Notes
 
 - `pip install .` is the canonical public install path.
-- `requirements.txt` is a source-run fallback if you want to execute `python server.py` directly.
+- `kalshi-research-mcp` is the canonical public launch command after install.
+- `requirements.txt` is a source-run fallback if you want to execute `python server.py` directly during local development.
 - `requirements-legacy.txt` adds optional dependencies used by old plotting or live/demo scripts.
 - The original pinned `pandas==2.2.2` install path is not reliable on Windows Python 3.13 because it can fall back to a failing source build. The current version range in `requirements.txt` is chosen to allow binary wheels on modern Python versions.
 
@@ -151,14 +152,10 @@ Add this repo as an MCP server in your Claude Code MCP config:
 {
   "mcpServers": {
     "kalshi-research": {
-      "command": "python",
-      "args": [
-        "server.py"
-      ],
-      "cwd": "C:\\path\\to\\KalshiMarketMaker",
+      "command": "kalshi-research-mcp",
       "env": {
         "KALSHI_MARKET_DATA_BASE_URL": "https://api.elections.kalshi.com/trade-api/v2",
-        "KALSHI_ARCHIVE_PATH": "C:\\path\\to\\KalshiMarketMaker\\kalshi_all_markets_archive.csv"
+        "KALSHI_ARCHIVE_PATH": "C:\\path\\to\\KalshiData\\kalshi_all_markets_archive.csv"
       }
     }
   }
@@ -173,18 +170,16 @@ Codex can also use MCP servers.
 
 The idea is the same:
 
-- Codex launches `server.py`
+- Codex launches `kalshi-research-mcp`
 - the MCP connection gives Codex access to the tools
 - you can then ask Codex to use the Kalshi research tools
 
 If your Codex setup supports MCP config directly, use the same values as the Claude Code example above:
 
-- command: `python`
-- args: `server.py`
-- working folder: this repo
+- command: `kalshi-research-mcp`
 - env:
   - `KALSHI_MARKET_DATA_BASE_URL=https://api.elections.kalshi.com/trade-api/v2`
-  - `KALSHI_ARCHIVE_PATH=./kalshi_all_markets_archive.csv`
+  - `KALSHI_ARCHIVE_PATH=C:\path\to\KalshiData\kalshi_all_markets_archive.csv`
 
 If you use the Codex CLI, OpenAI also documents MCP commands such as:
 
@@ -228,16 +223,23 @@ Downloads the public daily Kalshi market archive and writes a CSV locally.
 
 If you call it with no dates, it defaults to the last 7 completed days.
 For the full archive, pass an explicit `start_date`, for example `2021-06-30`.
+The tool only writes inside the configured archive directory and will not overwrite an existing file unless you pass `allow_overwrite=true`.
+If you are replacing an existing archive and the requested window is incomplete, the tool refuses to replace the old file unless you also pass `allow_incomplete_overwrite=true`.
+If some requested days are unavailable, the response includes `complete_window=false` and a `missing_days` list.
 
 Example parameters:
 
 - `start_date`
 - `end_date`
 - `output_path`
+- `allow_overwrite`
+- `allow_incomplete_overwrite`
 
 ### `search_settled_markets`
 
 Searches the local archive CSV for settled markets matching a term.
+
+`archive_path` is limited to the configured archive directory and must point to a `.csv` file.
 
 Example parameters:
 
@@ -296,7 +298,7 @@ If another person wants to use it, they need to:
 
 1. clone the repo
 2. run `pip install .`
-3. add `server.py` to their MCP client config
+3. add `kalshi-research-mcp` to their MCP client config
 4. start using the tools through Claude Code
 
 ## Local Testing
@@ -313,9 +315,10 @@ Build the package:
 python -m build
 ```
 
-That suite now includes an MCP stdio integration smoke test that launches `server.py` and exercises:
+That suite now includes an MCP stdio integration smoke test that launches the installed `kalshi-research-mcp` command in CI and exercises:
 
 - `server_info`
+- `download_archive`
 - `search_settled_markets`
 - `run_backtest`
 
@@ -327,7 +330,7 @@ python -m py_compile backtest_engine.py backtest_config.py server.py download_ma
 
 ## Important Files
 
-- `server.py`: FastMCP entrypoint and tool definitions
+- `server.py`: FastMCP entrypoint and tool definitions behind `kalshi-research-mcp`
 - `backtest_engine.py`: market-data client, routing logic, candlestick normalization, synthetic fills, backtest engine
 - `backtest_config.py`: backtest data classes
 - `download_market_archive.py`: reusable public archive downloader
@@ -345,7 +348,7 @@ The repo still includes older live/demo trading pieces:
 - `runner.py`
 - `config.yaml`
 
-Those are separate from the research MCP path. If you are using this repo as an MCP server, start with `server.py`, not `runner.py`.
+Those are separate from the research MCP path. If you are using this repo as an MCP server, start with `kalshi-research-mcp`, not `runner.py`.
 
 ## Current Caveats
 

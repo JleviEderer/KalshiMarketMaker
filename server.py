@@ -24,6 +24,42 @@ def _resolve_archive_path(archive_path: str | None) -> Path:
     return (Path(archive_path) if archive_path else DEFAULT_ARCHIVE_PATH).expanduser()
 
 
+def _archive_directory() -> Path:
+    return DEFAULT_ARCHIVE_PATH.expanduser().resolve().parent
+
+
+def _resolve_archive_candidate_path(archive_path: str | None) -> Path:
+    archive_dir = _archive_directory()
+    raw_path = (archive_path or "").strip()
+    if raw_path:
+        requested_path = Path(raw_path).expanduser()
+        candidate = requested_path if requested_path.is_absolute() else archive_dir / requested_path
+    else:
+        candidate = DEFAULT_ARCHIVE_PATH.expanduser()
+
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(archive_dir)
+    except ValueError as exc:
+        raise ValueError(f"archive path must stay within archive directory {archive_dir}") from exc
+
+    _require(resolved.suffix.lower() == ".csv", "archive path must end with .csv")
+    return resolved
+
+
+def _resolve_archive_output_path(output_path: str | None, allow_overwrite: bool) -> Path:
+    resolved = _resolve_archive_candidate_path(output_path)
+    if resolved.exists() and not allow_overwrite:
+        raise FileExistsError(
+            f"Archive output already exists at {resolved}. Pass allow_overwrite=true to replace it."
+        )
+    return resolved
+
+
+def _resolve_archive_input_path(archive_path: str | None) -> Path:
+    return _resolve_archive_candidate_path(archive_path)
+
+
 def _parse_iso8601(value: str) -> datetime:
     parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     if parsed.tzinfo is None:
@@ -70,9 +106,13 @@ def server_info() -> dict[str, Any]:
     return {
         "server": "kalshi-research-mcp",
         "version": _server_version(),
-        "focus": "historical market discovery, archive download, and backtesting",
+        "focus": "historical market discovery, local archive caching, and backtesting",
         "default_archive_path": str(DEFAULT_ARCHIVE_PATH),
+        "default_archive_directory": str(_archive_directory()),
         "download_archive_default_window_days": DEFAULT_ARCHIVE_LOOKBACK_DAYS,
+        "download_archive_requires_explicit_overwrite": True,
+        "download_archive_output_scope": "Paths must stay within the configured archive directory and end with .csv.",
+        "search_archive_input_scope": "archive_path must stay within the configured archive directory and end with .csv.",
         "tools": [
             "server_info",
             "download_archive",
@@ -87,17 +127,22 @@ def download_archive(
     start_date: str = "",
     end_date: str = "",
     output_path: str = "",
+    allow_overwrite: bool = False,
+    allow_incomplete_overwrite: bool = False,
 ) -> dict[str, Any]:
     """Download the public Kalshi archive CSV used for market discovery."""
     resolved_start_date = start_date.strip() or None
     resolved_end_date = end_date.strip() or None
     if resolved_start_date is None and resolved_end_date is None:
         resolved_start_date, resolved_end_date = _default_archive_window()
+    resolved_output_path = _resolve_archive_output_path(output_path, allow_overwrite=allow_overwrite)
 
     summary = download_market_archive(
         start_date=resolved_start_date,
         end_date=resolved_end_date,
-        output_path=output_path or str(DEFAULT_ARCHIVE_PATH),
+        output_path=str(resolved_output_path),
+        allow_incomplete_overwrite=allow_incomplete_overwrite,
+        existing_target_exists=resolved_output_path.exists(),
     )
     return summary
 
@@ -112,7 +157,7 @@ def search_settled_markets(
     search_term = search_term.strip()
     _require(bool(search_term), "search_term is required")
     _require(limit >= 1, "limit must be at least 1")
-    path = _resolve_archive_path(archive_path or None)
+    path = _resolve_archive_input_path(archive_path or None)
     if not path.exists():
         raise FileNotFoundError(f"Archive not found at {path}. Run download_archive first.")
 
