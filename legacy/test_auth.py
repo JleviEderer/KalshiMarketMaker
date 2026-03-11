@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """
-Test script to verify Kalshi API authentication
+Legacy script to verify Kalshi API authentication.
 """
 
 import os
 import logging
+
+from _bootstrap import add_repo_root_to_path
+
+add_repo_root_to_path()
+
 from mm import KalshiTradingAPI
 
 def test_kalshi_auth():
@@ -164,8 +169,8 @@ if __name__ == "__main__":
         print("\n🎉 Authentication working! You can now run your trading bot.")
         print("\nNext steps:")
         print("1. Replace your mm.py file with the fixed version")
-        print("2. Replace your runner.py file with the fixed version")  
-        print("3. Run: python runner.py --config config.yaml")
+        print("2. Replace your legacy/runner.py file with the fixed version")
+        print("3. Run: python legacy/runner.py --config legacy/config.yaml")
     else:
         print("\n❌ Authentication failed. Please check your API keys and try again.")
         print("\nTroubleshooting:")
@@ -225,8 +230,8 @@ if __name__ == "__main__":
         print("\n🎉 Authentication working! You can now run your trading bot.")
         print("\nNext steps:")
         print("1. Replace the fixed mm.py file with your current one")
-        print("2. Replace the fixed runner.py file with your current one")  
-        print("3. Run: python runner.py --config config.yaml")
+        print("2. Replace the fixed legacy/runner.py file with your current one")
+        print("3. Run: python legacy/runner.py --config legacy/config.yaml")
     else:
         print("\n❌ Authentication failed. Please check your API keys and try again.")
         print("\nTroubleshooting:")

@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """
-Direct test of KXHIGHMIA and related tickers
+Legacy direct ticker checks for manual live-trading experiments.
 """
 
-import requests
 import os
 from datetime import datetime
+
+import requests
+
+from _bootstrap import add_repo_root_to_path
+
+add_repo_root_to_path()
 
 def test_direct_ticker():
     """Test KXHIGHMIA and variations directly"""
@@ -177,7 +182,7 @@ def test_live_auth_with_ticker():
             print(f"❌ Error with live API: {e}")
 
     except ImportError:
-        print("❌ Cannot import mm.py - run this from your workspace directory")
+        print("❌ Cannot import mm.py from the repo root")
     except Exception as e:
         print(f"❌ Error with live API test: {e}")
 

@@ -1,9 +1,18 @@
+"""Legacy live/demo market-making runner kept outside the public MCP path."""
+
 import argparse
 import logging
 from concurrent.futures import ThreadPoolExecutor
-import yaml
 import os
+from pathlib import Path
 from typing import Dict
+
+import yaml
+
+from _bootstrap import add_repo_root_to_path
+
+LEGACY_DIR = Path(__file__).resolve().parent
+add_repo_root_to_path()
 
 # Note: No need for load_dotenv() when using Replit secrets
 
@@ -125,7 +134,12 @@ def validate_environment():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Kalshi Market Making Algorithm")
-    parser.add_argument("--config", type=str, default="config.yaml", help="Path to config file")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=str(LEGACY_DIR / "config.yaml"),
+        help="Path to legacy strategy config file",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Validate config without running")
     args = parser.parse_args()
 

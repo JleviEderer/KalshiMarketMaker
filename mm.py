@@ -1,3 +1,5 @@
+"""Shared trading primitives used by the MCP backtester and legacy live scripts."""
+
 import abc
 import time
 from typing import Dict, List, Tuple

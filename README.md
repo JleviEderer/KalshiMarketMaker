@@ -180,10 +180,17 @@ pip install -r requirements.txt
 python server.py
 ```
 
-Optional legacy extras:
+Legacy/manual-trading extras live under [`legacy/`](legacy/README.md):
 
 ```bash
 pip install ".[legacy]"
+```
+
+Legacy entrypoints:
+
+```bash
+python legacy/test_auth.py
+python legacy/runner.py --config legacy/config.yaml --dry-run
 ```
 
 ## Local Validation
@@ -200,8 +207,10 @@ Build the package:
 python -m build
 ```
 
-## Important Note
+## Legacy Trading Files
 
-The repo still contains older legacy trading scripts such as `mm.py` and `runner.py`.
+Older live/demo trading scripts are kept under [`legacy/`](legacy/README.md).
+`mm.py` stays at the repo root only because the backtester still imports its
+shared strategy primitives.
 
 If you are here to use the MCP, the public entrypoint is `kalshi-research-mcp`.
