@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Debug Kalshi API signature generation step by step
+Legacy utility to debug Kalshi API signature generation step by step.
 """
 
 import os

@@ -1,3 +1,5 @@
+"""Shared trading primitives used by the MCP backtester and legacy live scripts."""
+
 import abc
 import time
 from typing import Dict, List, Tuple
@@ -68,7 +70,7 @@ class KalshiTradingAPI(AbstractTradingAPI):
 
     def _load_private_key(self):
         try:
-            # Handle the case where Replit strips newlines from secrets
+            # Handle the case where a secret manager strips newlines from PEM data
             private_key_content = self.private_key_pem
 
             # If the key doesn't have proper newlines, fix the formatting

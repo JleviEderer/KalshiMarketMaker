@@ -1,11 +1,20 @@
+"""Legacy live/demo market-making runner kept outside the public MCP path."""
+
 import argparse
 import logging
 from concurrent.futures import ThreadPoolExecutor
-import yaml
 import os
+from pathlib import Path
 from typing import Dict
 
-# Note: No need for load_dotenv() when using Replit secrets
+import yaml
+
+from _bootstrap import add_repo_root_to_path
+
+LEGACY_DIR = Path(__file__).resolve().parent
+add_repo_root_to_path()
+
+# Note: No load_dotenv() call is needed when credentials come from the environment
 
 # Import from the fixed mm.py file
 from mm import KalshiTradingAPI, AvellanedaMarketMaker
@@ -125,11 +134,16 @@ def validate_environment():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Kalshi Market Making Algorithm")
-    parser.add_argument("--config", type=str, default="config.yaml", help="Path to config file")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=str(LEGACY_DIR / "config.yaml"),
+        help="Path to legacy strategy config file",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Validate config without running")
     args = parser.parse_args()
 
-    # Note: No load_dotenv() needed for Replit secrets
+    # Note: No load_dotenv() call is needed when credentials come from the environment
 
     # Validate environment
     if not validate_environment():

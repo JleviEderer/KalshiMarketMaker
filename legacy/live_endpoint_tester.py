@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """
-Test script to verify Kalshi LIVE API authentication
+Legacy script to verify Kalshi LIVE API authentication.
 """
 
 import os
 import logging
+
+from _bootstrap import add_repo_root_to_path
+
+add_repo_root_to_path()
+
 from mm import KalshiTradingAPI
 
 def test_live_endpoints():
@@ -23,7 +28,7 @@ def test_live_endpoints():
 
     if missing_vars:
         logger.error(f"Missing environment variables: {missing_vars}")
-        logger.error("Please add these as Replit secrets")
+        logger.error("Please export these credentials in your shell environment")
         return False
 
     logger.info("🔴 TESTING LIVE KALSHI API")
@@ -160,8 +165,8 @@ def test_live_endpoints():
         print("Your live API keys are working correctly!")
         print("\nNext steps:")
         print("1. Find active markets with real bid/ask spreads")
-        print("2. Update config.yaml to use live mode")
-        print("3. Run your bot in safe mode (orders commented out)")
+        print("2. Update legacy/config.yaml to use live mode")
+        print("3. Run python legacy/runner.py --config legacy/config.yaml")
 
         return True
 

@@ -263,34 +263,37 @@ class KalshiBacktester:
         self.logger.info("Searching for '%s' in %s", search_term, file_path)
         market_info: dict[str, dict[str, Any]] = {}
 
-        with pd.read_csv(file_path, chunksize=10_000, low_memory=False) as reader:
-            for chunk in reader:
-                missing_columns = REQUIRED_ARCHIVE_COLUMNS.difference(chunk.columns)
-                if missing_columns:
-                    missing = ", ".join(sorted(missing_columns))
-                    raise ValueError(f"Archive file is missing required columns: {missing}")
+        try:
+            with pd.read_csv(file_path, chunksize=10_000, low_memory=False) as reader:
+                for chunk in reader:
+                    missing_columns = REQUIRED_ARCHIVE_COLUMNS.difference(chunk.columns)
+                    if missing_columns:
+                        missing = ", ".join(sorted(missing_columns))
+                        raise ValueError(f"Archive file is missing required columns: {missing}")
 
-                settled_chunk = chunk[chunk["status"].isin(["settled", "closed", "finalized"])].copy()
-                if search_term:
-                    settled_chunk = settled_chunk[
-                        settled_chunk["ticker_name"].str.upper().str.contains(search_term.upper(), na=False)
-                    ]
+                    settled_chunk = chunk[chunk["status"].isin(["settled", "closed", "finalized"])].copy()
+                    if search_term:
+                        settled_chunk = settled_chunk[
+                            settled_chunk["ticker_name"].str.upper().str.contains(search_term.upper(), na=False)
+                        ]
 
-                for _, row in settled_chunk.iterrows():
-                    ticker = row["ticker_name"]
-                    candidate = {
-                        "ticker": ticker,
-                        "title": row["ticker_name"],
-                        "series_ticker": row.get("series_ticker") or row.get("report_ticker"),
-                        "report_ticker": row.get("report_ticker"),
-                        "close_time": row.get("date"),
-                    }
-                    existing = market_info.get(ticker)
-                    if existing is None or (candidate["close_time"] or "") >= (existing.get("close_time") or ""):
-                        if existing:
-                            candidate["series_ticker"] = candidate["series_ticker"] or existing.get("series_ticker")
-                            candidate["report_ticker"] = candidate["report_ticker"] or existing.get("report_ticker")
-                        market_info[ticker] = candidate
+                    for _, row in settled_chunk.iterrows():
+                        ticker = row["ticker_name"]
+                        candidate = {
+                            "ticker": ticker,
+                            "title": row["ticker_name"],
+                            "series_ticker": row.get("series_ticker") or row.get("report_ticker"),
+                            "report_ticker": row.get("report_ticker"),
+                            "close_time": row.get("date"),
+                        }
+                        existing = market_info.get(ticker)
+                        if existing is None or (candidate["close_time"] or "") >= (existing.get("close_time") or ""):
+                            if existing:
+                                candidate["series_ticker"] = candidate["series_ticker"] or existing.get("series_ticker")
+                                candidate["report_ticker"] = candidate["report_ticker"] or existing.get("report_ticker")
+                            market_info[ticker] = candidate
+        except (pd.errors.ParserError, pd.errors.EmptyDataError, UnicodeDecodeError) as exc:
+            raise ValueError(f"Archive file could not be parsed as CSV: {exc}") from exc
 
         return list(market_info.values())
 

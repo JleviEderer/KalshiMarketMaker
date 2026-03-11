@@ -1,4 +1,6 @@
 import json
+import os
+import shutil
 import socketserver
 import sys
 import threading
@@ -79,6 +81,14 @@ class McpServerTests(unittest.TestCase):
                         }
                     ]
                 },
+                "/reporting/market_data_2025-03-08.json": [
+                    {
+                        "ticker_name": "TEST-MKT",
+                        "status": "finalized",
+                        "report_ticker": "TEST",
+                        "date": "2025-03-08",
+                    }
+                ],
             }
 
             with _ThreadedTCPServer(("127.0.0.1", 0), _KalshiFixtureHandler) as httpd:
@@ -89,6 +99,7 @@ class McpServerTests(unittest.TestCase):
                     anyio.run(
                         self._exercise_server,
                         f"http://127.0.0.1:{httpd.server_address[1]}/trade-api/v2",
+                        f"http://127.0.0.1:{httpd.server_address[1]}/reporting/market_data_{{day}}.json",
                         str(archive_path),
                         backend="asyncio",
                     )
@@ -98,13 +109,18 @@ class McpServerTests(unittest.TestCase):
         finally:
             archive_path.unlink(missing_ok=True)
 
-    async def _exercise_server(self, base_url: str, archive_path: str):
+    async def _exercise_server(self, base_url: str, archive_url_template: str, archive_path: str):
         server_path = Path(__file__).resolve().parents[1] / "server.py"
+        installed_command = os.getenv("KALSHI_MCP_TEST_COMMAND") or shutil.which("kalshi-research-mcp")
+        command = installed_command or sys.executable
+        args = [] if installed_command else [str(server_path)]
+        relative_download_path = f"downloads/test-archive-{uuid4().hex}.csv"
         params = StdioServerParameters(
-            command=sys.executable,
-            args=[str(server_path)],
+            command=command,
+            args=args,
             env={
                 "KALSHI_MARKET_DATA_BASE_URL": base_url,
+                "KALSHI_PUBLIC_ARCHIVE_URL_TEMPLATE": archive_url_template,
                 "KALSHI_ARCHIVE_PATH": archive_path,
             },
         )
@@ -122,6 +138,21 @@ class McpServerTests(unittest.TestCase):
                 server_info = await session.call_tool("server_info", {})
                 self.assertFalse(server_info.isError)
                 self.assertEqual("kalshi-research-mcp", server_info.structuredContent["server"])
+                self.assertTrue(server_info.structuredContent["download_archive_requires_explicit_overwrite"])
+
+                archive_download = await session.call_tool(
+                    "download_archive",
+                    {
+                        "start_date": "2025-03-08",
+                        "end_date": "2025-03-08",
+                        "output_path": relative_download_path,
+                    },
+                )
+                self.assertFalse(archive_download.isError)
+                self.assertTrue(archive_download.structuredContent["complete_window"])
+                downloaded_path = Path(archive_download.structuredContent["output_path"])
+                self.assertTrue(downloaded_path.name.startswith("test-archive-"))
+                self.assertEqual("downloads", downloaded_path.parent.name)
 
                 search = await session.call_tool(
                     "search_settled_markets",

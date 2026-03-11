@@ -55,23 +55,24 @@ README.md                    # User-facing setup docs
 Install dependencies:
 
 ```bash
-pip install -r requirements.txt
+pip install .
 ```
 
 Optional extras for plotting and legacy scripts:
 
 ```bash
-pip install -r requirements-legacy.txt
+pip install ".[legacy]"
 ```
 
-Run the MCP server directly:
+Run the packaged MCP server:
 
 ```bash
+kalshi-research-mcp
+```
+
+Source-only development fallback:
+
+```bash
+pip install -r requirements.txt
 python server.py
-```
-
-Use MCP dev tooling:
-
-```bash
-mcp dev server.py
 ```

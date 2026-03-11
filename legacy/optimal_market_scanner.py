@@ -5,8 +5,13 @@ Optimal Market Scanner - Find markets with 2-5¢ spreads and good volume
 
 import os
 import logging
-from mm import KalshiTradingAPI
 from typing import List, Dict
+
+from _bootstrap import add_repo_root_to_path
+
+add_repo_root_to_path()
+
+from mm import KalshiTradingAPI
 
 class OptimalMarketScanner:
     def __init__(self):
