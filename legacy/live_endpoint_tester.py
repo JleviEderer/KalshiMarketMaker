@@ -28,7 +28,7 @@ def test_live_endpoints():
 
     if missing_vars:
         logger.error(f"Missing environment variables: {missing_vars}")
-        logger.error("Please add these as Replit secrets")
+        logger.error("Please export these credentials in your shell environment")
         return False
 
     logger.info("🔴 TESTING LIVE KALSHI API")

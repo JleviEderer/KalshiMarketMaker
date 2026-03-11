@@ -22,7 +22,7 @@ def test_kalshi_auth():
     )
     logger = logging.getLogger('AuthTest')
 
-    # Note: No load_dotenv() needed for Replit secrets
+    # Note: No load_dotenv() call is needed when credentials come from the environment
 
     # Check environment variables
     required_vars = ['DEMO_KALSHI_KEY_ID', 'DEMO_KALSHI_PRIVATE_KEY', 'DEMO_KALSHI_BASE_URL']
@@ -30,7 +30,7 @@ def test_kalshi_auth():
 
     if missing_vars:
         logger.error(f"Missing environment variables: {missing_vars}")
-        logger.error("Please add these as Replit secrets (lock icon in sidebar)")
+        logger.error("Please export these credentials in your shell environment")
         return False
 
     logger.info("Environment variables found:")
@@ -49,7 +49,7 @@ def test_kalshi_auth():
         logger.error("❌ Private key doesn't end with proper footer")
         return False
 
-    # Check if it has newlines OR spaces (Replit sometimes strips newlines)
+    # Check if it has newlines OR spaces (some secret managers strip newlines)
     if '\n' not in private_key and ' ' not in private_key:
         logger.error("❌ Private key appears to be malformed (no separators)")
         return False
@@ -174,10 +174,10 @@ if __name__ == "__main__":
     else:
         print("\n❌ Authentication failed. Please check your API keys and try again.")
         print("\nTroubleshooting:")
-        print("1. Verify your DEMO_KALSHI_KEY_ID is correct in Replit secrets")
+        print("1. Verify your DEMO_KALSHI_KEY_ID is set correctly in your environment")
         print("2. Verify your DEMO_KALSHI_PRIVATE_KEY has proper newlines")
-        print("3. Make sure you're using Replit secrets, not a .env file")
-        print("4. Restart your Repl after updating secrets")
+        print("3. Make sure your shell environment is exporting the credentials")
+        print("4. Restart your shell or terminal after updating credentials")
 
 def test_market_exists():
     """Test if the configured markets exist"""

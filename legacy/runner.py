@@ -14,7 +14,7 @@ from _bootstrap import add_repo_root_to_path
 LEGACY_DIR = Path(__file__).resolve().parent
 add_repo_root_to_path()
 
-# Note: No need for load_dotenv() when using Replit secrets
+# Note: No load_dotenv() call is needed when credentials come from the environment
 
 # Import from the fixed mm.py file
 from mm import KalshiTradingAPI, AvellanedaMarketMaker
@@ -143,7 +143,7 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="Validate config without running")
     args = parser.parse_args()
 
-    # Note: No load_dotenv() needed for Replit secrets
+    # Note: No load_dotenv() call is needed when credentials come from the environment
 
     # Validate environment
     if not validate_environment():
