@@ -12,6 +12,7 @@ class BacktestConfig:
     k: float = 1.5
     sigma: float = 0.001
     T: float = 28800
+    order_expiration: int = 3600
     min_spread: float = 0.02
     position_limit_buffer: float = 0.1
     inventory_skew_factor: float = 0.001
@@ -35,6 +36,14 @@ class MarketData:
     no_bid: float
     no_ask: float
     volume: int = 0
+    yes_bid_low: float | None = None
+    yes_bid_high: float | None = None
+    yes_ask_low: float | None = None
+    yes_ask_high: float | None = None
+    no_bid_low: float | None = None
+    no_bid_high: float | None = None
+    no_ask_low: float | None = None
+    no_ask_high: float | None = None
     trades: List[HistoricalTrade] = field(default_factory=list)
 
 @dataclass

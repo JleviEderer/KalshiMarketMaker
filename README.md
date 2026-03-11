@@ -1,208 +1,322 @@
-# Kalshi Market Making Algorithm
+# Kalshi Research MCP
 
-An automated market-making system for [Kalshi](https://kalshi.com) prediction markets, built around the **Avellaneda-Stoikov model**. Supports live trading, demo trading, backtesting, and parameter optimization via grid search.
+This repo now includes a local MCP server for Kalshi historical data and backtesting.
 
-## Overview
+In simple terms:
 
-This project provides:
+- `server.py` is the tool program
+- Claude Code or another MCP client can launch it
+- the tools let an AI download archive data, search settled markets, and run backtests
 
-- **Avellaneda-Stoikov Market Maker** — Dynamically adjusts bid/ask quotes based on inventory, time to expiry, and volatility.
-- **Simple Market Maker** — A fixed-spread alternative for simpler strategies.
-- **Parallel Strategy Execution** — Run multiple strategies across different markets simultaneously.
-- **Backtesting Engine** — Test strategies against historical Kalshi market data.
-- **Grid Search Optimization** — Automatically find optimal parameters across a defined search space.
-- **Demo & Live Modes** — Safely test on Kalshi's demo environment before going live, with a safety confirmation gate for live trading.
+This is for research. It is not a live-trading MCP.
 
-## Project Structure
+## What This Repo Is
 
+The MCP server exposes a small set of read-only tools:
+
+- `server_info`
+- `download_archive`
+- `search_settled_markets`
+- `run_backtest`
+
+The repo still contains older live-trading scripts such as `mm.py` and `runner.py`, but the MCP path is focused on:
+
+- historical market discovery
+- public archive download
+- historical candlestick research
+- backtesting summaries for AI clients
+
+## Plain-English Explanation
+
+If you are not a programmer, the easiest mental model is:
+
+- this repo is a toolbox
+- `server.py` is the box that opens the tools
+- Claude Code is the app that uses those tools
+- MCP is the connection between Claude and the toolbox
+
+After setup, Claude can do things like:
+
+- download Kalshi archive data
+- search for old settled markets
+- run a backtest on a market window
+
+## What It Is Not
+
+This project is not:
+
+- a public website
+- a browser app
+- a hosted API service by default
+- a live-trading MCP
+
+By default, this is a local MCP server. Someone uses it by cloning the repo, installing dependencies, and adding it to an MCP client such as Claude Code.
+
+## Quick Start
+
+### 1. Create a virtual environment
+
+Using a virtual environment is the safest path, especially on Windows.
+
+```bash
+python -m venv .venv
 ```
-├── mm.py                        # Core: Trading API client + market maker models
-├── runner.py                    # Orchestrator: runs strategies in parallel
-├── config.yaml                  # Strategy configurations
-├── backtester.py                # Interactive CLI for discovering & backtesting markets
-├── backtest_engine.py           # Backtesting engine with mock API
-├── backtest_config.py           # Backtest parameter definitions
-├── grid_search.py               # Automated parameter optimization
-├── download_market_archive.py   # Downloads historical data from Kalshi
-├── analyze_results.py           # Analyzes backtest/grid search results
-├── test_auth.py                 # API authentication verification
-├── requirements.txt             # Python dependencies
-├── Dockerfile                   # Container build for deployment
-└── fly.toml                     # Fly.io deployment config
+
+Activate it:
+
+```bash
+.venv\Scripts\activate
 ```
 
-## Setup
+### 2. Open a terminal in this folder
 
-### Prerequisites
+```bash
+cd C:\Users\justi\AppData\Local\Temp\KalshiMarketMaker
+```
 
-- Python 3.10+
-- A Kalshi account with API access (demo or live)
-- Your Kalshi API key ID and RSA private key
-
-### 1. Install Dependencies
+### 3. Install MCP runtime dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Set Environment Variables
+That installs the MCP server runtime and research/backtest dependencies.
 
-The system uses environment variables for API credentials. Set the following for **demo** mode:
-
-```
-DEMO_KALSHI_KEY_ID=your_demo_key_id
-DEMO_KALSHI_PRIVATE_KEY=your_demo_rsa_private_key
-DEMO_KALSHI_BASE_URL=https://demo-api.kalshi.co/trade-api/v2   # optional, falls back to default
-```
-
-For **live** mode:
-
-```
-LIVE_KALSHI_KEY_ID=your_live_key_id
-LIVE_KALSHI_PRIVATE_KEY=your_live_rsa_private_key
-LIVE_KALSHI_BASE_URL=https://trading-api.kalshi.com/trade-api/v2   # optional, falls back to default
-CONFIRM_LIVE=True
-```
-
-> **On Replit:** Add these as Secrets via the Secrets tab (lock icon). They are stored securely and never committed to source control.
-
-### 3. Verify Authentication
+If you also want the older plotting, notebook, or legacy trading scripts:
 
 ```bash
-python test_auth.py
+pip install -r requirements-legacy.txt
 ```
 
-This will confirm your API keys are valid and you can connect to Kalshi.
+### 4. Set the market-data base URL
 
-## Usage
-
-### Running Strategies
-
-1. Define your strategies in `config.yaml`:
-
-```yaml
-strategy_name:
-  api:
-    market_ticker: KXCPI-25JUN-T0.3
-    trade_side: "yes"
-  market_maker:
-    max_position: 5
-    order_expiration: 28800
-    gamma: 0.1
-    k: 1.5
-    sigma: 0.001
-    T: 28800
-    min_spread: 0.0
-    position_limit_buffer: 0.1
-    inventory_skew_factor: 0.001
-  dt: 2.0
-  mode: demo
-```
-
-2. Run the strategies:
+Use the public Kalshi market-data host for the research MCP:
 
 ```bash
-python runner.py --config config.yaml
+set KALSHI_MARKET_DATA_BASE_URL=https://api.elections.kalshi.com/trade-api/v2
 ```
 
-All strategies defined in the config file run in parallel using threads.
-
-### Configuration Parameters
-
-| Parameter | Description |
-|-----------|-------------|
-| `market_ticker` | Kalshi market ticker (e.g., `KXCPI-25JUN-T0.3`) |
-| `trade_side` | Side to trade: `"yes"` or `"no"` |
-| `max_position` | Maximum number of contracts to hold |
-| `order_expiration` | How long orders stay active (seconds) |
-| `gamma` | Risk aversion parameter (higher = more conservative) |
-| `k` | Order arrival rate parameter |
-| `sigma` | Estimated market volatility |
-| `T` | Time horizon in seconds |
-| `min_spread` | Minimum bid-ask spread |
-| `position_limit_buffer` | Buffer before hitting position limits |
-| `inventory_skew_factor` | How much inventory affects quote skew |
-| `dt` | Update interval in seconds |
-| `mode` | `demo` or `live` |
-
-### Backtesting
-
-1. Download historical market data:
+Optional archive path:
 
 ```bash
-python download_market_archive.py
+set KALSHI_ARCHIVE_PATH=C:\Users\justi\AppData\Local\Temp\KalshiMarketMaker\kalshi_all_markets_archive.csv
 ```
 
-This fetches data from Kalshi's public archive and saves it as `kalshi_all_markets_archive.parquet`.
-
-2. Run the interactive backtester:
+### 5. Run the MCP server locally
 
 ```bash
-python backtester.py
+python server.py
 ```
 
-Search for settled markets by keyword (e.g., "CPI", "FED"), select a market, and run a backtest with your strategy parameters.
+That starts the MCP server over `stdio`, which is the normal local setup for Claude Code.
 
-### Grid Search
+## Dependency Notes
 
-Optimize strategy parameters automatically:
+- `requirements.txt` is the publishable MCP-first install path.
+- `requirements-legacy.txt` adds optional dependencies used by old plotting or live/demo scripts.
+- The original pinned `pandas==2.2.2` install path is not reliable on Windows Python 3.13 because it can fall back to a failing source build. The current version range in `requirements.txt` is chosen to allow binary wheels on modern Python versions.
+
+## Connect It To Claude Code
+
+Add this repo as an MCP server in your Claude Code MCP config:
+
+```json
+{
+  "mcpServers": {
+    "kalshi-research": {
+      "command": "python",
+      "args": [
+        "C:\\Users\\justi\\AppData\\Local\\Temp\\KalshiMarketMaker\\server.py"
+      ],
+      "cwd": "C:\\Users\\justi\\AppData\\Local\\Temp\\KalshiMarketMaker",
+      "env": {
+        "KALSHI_MARKET_DATA_BASE_URL": "https://api.elections.kalshi.com/trade-api/v2",
+        "KALSHI_ARCHIVE_PATH": "C:\\Users\\justi\\AppData\\Local\\Temp\\KalshiMarketMaker\\kalshi_all_markets_archive.csv"
+      }
+    }
+  }
+}
+```
+
+After that, Claude Code can call the MCP tools directly.
+
+## Connect It To Codex
+
+Codex can also use MCP servers.
+
+The idea is the same:
+
+- Codex launches `server.py`
+- the MCP connection gives Codex access to the tools
+- you can then ask Codex to use the Kalshi research tools
+
+If your Codex setup supports MCP config directly, use the same values as the Claude Code example above:
+
+- command: `python`
+- args: `server.py`
+- working folder: this repo
+- env:
+  - `KALSHI_MARKET_DATA_BASE_URL=https://api.elections.kalshi.com/trade-api/v2`
+  - `KALSHI_ARCHIVE_PATH=C:\Users\justi\AppData\Local\Temp\KalshiMarketMaker\kalshi_all_markets_archive.csv`
+
+If you use the Codex CLI, OpenAI also documents MCP commands such as:
 
 ```bash
-python grid_search.py
+codex mcp list
 ```
 
-Results are logged to `backtest_results_log.csv` for analysis.
-
-### Analyzing Results
+and MCP server registration commands such as:
 
 ```bash
-python analyze_results.py
+codex mcp add kalshi-research --command python --args C:\Users\justi\AppData\Local\Temp\KalshiMarketMaker\server.py
 ```
 
-## Architecture
+The exact Codex config screen or command can vary by client version, but the important point is:
 
+- this repo is not only for Claude Code
+- it can also be plugged into Codex as an MCP server
+
+## Example MCP Flow
+
+Typical usage looks like this:
+
+1. Ask Claude to run `download_archive`
+2. Ask Claude to run `search_settled_markets` for something like `CPI` or `FED`
+3. Pick a market
+4. Ask Claude to run `run_backtest`
+
+## Tools
+
+### `server_info`
+
+Shows:
+
+- server name
+- default archive path
+- available tools
+
+### `download_archive`
+
+Downloads the public daily Kalshi market archive and writes a CSV locally.
+
+Example parameters:
+
+- `start_date`
+- `end_date`
+- `output_path`
+
+### `search_settled_markets`
+
+Searches the local archive CSV for settled markets matching a term.
+
+Example parameters:
+
+- `search_term`
+- `limit`
+- `archive_path`
+
+### `run_backtest`
+
+Runs an Avellaneda-style backtest over a historical market window.
+
+Example parameters:
+
+- `market_ticker`
+- `start_date`
+- `end_date`
+- `series_ticker`
+- strategy settings like `gamma`, `k`, `sigma`, `max_position`, and `order_expiration`
+
+The MCP response includes routing metadata such as:
+
+- `candlestick_source`
+- `cutoff_ts`
+- resolved `series_ticker`
+
+## How The Data Routing Works
+
+Kalshi currently has a split between live and historical data.
+
+This MCP server:
+
+- checks the historical cutoff
+- fetches market metadata
+- uses settlement metadata to decide whether to call the live or historical candlestick endpoint
+- resolves `series_ticker` from market or event metadata when needed
+
+That is important because some older settled markets only exist on the historical endpoints.
+
+## Share It With Other People
+
+Yes, you can share the GitHub repo and say you made an MCP server for Kalshi historical data and backtesting.
+
+The accurate way to describe it is:
+
+"I built a local MCP server for Kalshi historical data and backtesting that works with Claude Code and Codex."
+
+That wording is better because:
+
+- it is true
+- it tells people what the project actually does
+- it does not imply you built a public hosted service
+
+## What Someone Else Has To Do
+
+If another person wants to use it, they need to:
+
+1. clone the repo
+2. run `pip install -r requirements.txt`
+3. add `server.py` to their MCP client config
+4. start using the tools through Claude Code
+
+## Local Testing
+
+Run the unit tests:
+
+```bash
+python -m unittest discover -s tests -v
 ```
-config.yaml
-    │
-    ▼
-runner.py  ──▶  KalshiTradingAPI (mm.py)  ──▶  Kalshi API
-    │                    │
-    ▼                    ▼
-AvellanedaMarketMaker   Authentication (RSA signing)
-or SimpleMarketMaker    Order management
-    │                    Position tracking
-    ▼
-Parallel execution
-(ThreadPoolExecutor)
+
+That suite now includes an MCP stdio integration smoke test that launches `server.py` and exercises:
+
+- `server_info`
+- `search_settled_markets`
+- `run_backtest`
+
+Check syntax:
+
+```bash
+python -m py_compile backtest_engine.py backtest_config.py server.py download_market_archive.py
 ```
 
-**Key design decisions:**
+## Important Files
 
-- **RSA key authentication** — Uses cryptographic signing for API requests (no email/password).
-- **Mode separation** — Demo and live credentials are completely isolated with different environment variable prefixes.
-- **Live safety gate** — Live trading requires `CONFIRM_LIVE=True` to prevent accidental execution.
-- **Configuration-driven** — All strategy parameters live in `config.yaml`, making it easy to add or modify strategies without code changes.
+- `server.py`: FastMCP entrypoint and tool definitions
+- `backtest_engine.py`: market-data client, routing logic, candlestick normalization, synthetic fills, backtest engine
+- `backtest_config.py`: backtest data classes
+- `download_market_archive.py`: reusable public archive downloader
+- `tests/test_backtest_engine.py`: focused unit tests for routing and normalization
+- `tests/test_mcp_server.py`: MCP stdio integration smoke test for the local server
+- `requirements.txt`: MCP-first runtime dependencies
+- `requirements-legacy.txt`: optional extras for plotting and legacy trading scripts
+- `mm.py`: legacy live-trading API client and strategy logic used by the backtester's market-maker model
 
-## Deployment
+## Legacy Live-Trading Scripts
 
-### Fly.io
+The repo still includes older live/demo trading pieces:
 
-1. Install the [flyctl CLI](https://fly.io/docs/hands-on/install-flyctl/)
-2. Authenticate: `flyctl auth login`
-3. Initialize: `flyctl launch`
-4. Set secrets:
-   ```bash
-   flyctl secrets set LIVE_KALSHI_KEY_ID=your_key_id
-   flyctl secrets set LIVE_KALSHI_PRIVATE_KEY=your_private_key
-   flyctl secrets set LIVE_KALSHI_BASE_URL=https://trading-api.kalshi.com/trade-api/v2
-   flyctl secrets set CONFIRM_LIVE=True
-   ```
-5. Deploy: `flyctl deploy`
+- `mm.py`
+- `runner.py`
+- `config.yaml`
 
-### Replit
+Those are separate from the research MCP path. If you are using this repo as an MCP server, start with `server.py`, not `runner.py`.
 
-Secrets are managed through the Secrets tab. The project runs directly without any additional setup.
+## Current Caveats
+
+- This is a local MCP server, not a hosted service.
+- The synthetic fill model is a research approximation, not an execution replay.
+- The repo still contains legacy live-trading docs and scripts, so be careful to follow the MCP instructions above for research use.
 
 ## License
 
-MIT License — Copyright (c) 2025 Rodney Lafuente Mercado. See [LICENSE.md](LICENSE.md).
+MIT License. See `LICENSE.md`.
