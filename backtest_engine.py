@@ -9,6 +9,7 @@ import pandas as pd
 import requests
 
 from backtest_config import BacktestConfig, MarketData, Trade
+from http_utils import build_retry_session
 from mm import AbstractTradingAPI, AvellanedaMarketMaker
 
 
@@ -23,9 +24,10 @@ class KalshiMarketDataClient:
         )
         self.timeout = timeout
         self.logger = logger or logging.getLogger("KalshiMarketData")
+        self.session = build_retry_session()
 
     def make_request(self, method: str, path: str, params: Dict[str, Any] | None = None) -> Dict[str, Any]:
-        response = requests.request(
+        response = self.session.request(
             method=method,
             url=f"{self.base_url}{path}",
             params=params,

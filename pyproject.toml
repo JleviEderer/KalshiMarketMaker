@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kalshi-research-mcp"
+version = "0.1.0"
+description = "Local MCP server for Kalshi historical data and backtesting."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE.md"]
+authors = [
+  { name = "JleviEderer" }
+]
+keywords = ["mcp", "kalshi", "backtesting", "prediction-markets", "research"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering",
+]
+dependencies = [
+  "requests>=2.31,<3",
+  "pandas>=2.2,<3",
+  "mcp[cli]>=1.26,<2",
+]
+
+[project.optional-dependencies]
+legacy = [
+  "python-dotenv>=1,<2",
+  "PyYAML>=6,<7",
+  "cryptography>=42,<47",
+  "matplotlib>=3.8,<4",
+  "seaborn>=0.13,<1",
+  "plotly>=5.22,<6",
+]
+dev = [
+  "build>=1.2,<2",
+]
+
+[project.scripts]
+kalshi-research-mcp = "server:main"
+
+[project.urls]
+Homepage = "https://github.com/JleviEderer/KalshiMarketMaker"
+Issues = "https://github.com/JleviEderer/KalshiMarketMaker/issues"
+
+[tool.setuptools]
+py-modules = [
+  "server",
+  "backtest_config",
+  "backtest_engine",
+  "download_market_archive",
+  "http_utils",
+  "mm",
+]

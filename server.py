@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timezone
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -19,14 +20,26 @@ mcp = FastMCP("Kalshi Research", json_response=True)
 
 
 def _resolve_archive_path(archive_path: str | None) -> Path:
-    return Path(archive_path) if archive_path else DEFAULT_ARCHIVE_PATH
+    return (Path(archive_path) if archive_path else DEFAULT_ARCHIVE_PATH).expanduser()
 
 
 def _parse_iso8601(value: str) -> datetime:
-    parsed = datetime.fromisoformat(value)
+    parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def _server_version() -> str:
+    try:
+        return version("kalshi-research-mcp")
+    except PackageNotFoundError:
+        return "0.1.0"
 
 
 def _to_utc_iso8601(value: datetime) -> str:
@@ -49,6 +62,7 @@ def server_info() -> dict[str, Any]:
     """Describe the MCP server surface and defaults."""
     return {
         "server": "kalshi-research-mcp",
+        "version": _server_version(),
         "focus": "historical market discovery, archive download, and backtesting",
         "default_archive_path": str(DEFAULT_ARCHIVE_PATH),
         "tools": [
@@ -82,6 +96,9 @@ def search_settled_markets(
     archive_path: str = "",
 ) -> list[dict[str, Any]]:
     """Search the local archive CSV for settled markets matching a keyword."""
+    search_term = search_term.strip()
+    _require(bool(search_term), "search_term is required")
+    _require(limit >= 1, "limit must be at least 1")
     path = _resolve_archive_path(archive_path or None)
     if not path.exists():
         raise FileNotFoundError(f"Archive not found at {path}. Run download_archive first.")
@@ -113,6 +130,25 @@ def run_backtest(
     period_interval: int = 1,
 ) -> dict[str, Any]:
     """Run an Avellaneda-style backtest over a historical Kalshi market window."""
+    market_ticker = market_ticker.strip()
+    _require(bool(market_ticker), "market_ticker is required")
+    _require(initial_capital > 0, "initial_capital must be greater than 0")
+    _require(max_position > 0, "max_position must be greater than 0")
+    _require(transaction_cost >= 0, "transaction_cost must be non-negative")
+    _require(gamma >= 0, "gamma must be non-negative")
+    _require(k > 0, "k must be greater than 0")
+    _require(sigma >= 0, "sigma must be non-negative")
+    _require(horizon_seconds > 0, "horizon_seconds must be greater than 0")
+    _require(order_expiration > 0, "order_expiration must be greater than 0")
+    _require(min_spread >= 0, "min_spread must be non-negative")
+    _require(position_limit_buffer >= 0, "position_limit_buffer must be non-negative")
+    _require(inventory_skew_factor >= 0, "inventory_skew_factor must be non-negative")
+    _require(dt > 0, "dt must be greater than 0")
+    _require(period_interval >= 1, "period_interval must be at least 1")
+    parsed_start = _parse_iso8601(start_date)
+    parsed_end = _parse_iso8601(end_date)
+    _require(parsed_end > parsed_start, "end_date must be later than start_date")
+
     config = BacktestConfig(
         initial_capital=initial_capital,
         max_position=max_position,
@@ -130,8 +166,8 @@ def run_backtest(
     backtester = KalshiBacktester(config)
     results = backtester.run_backtest(
         market_ticker=market_ticker,
-        start_date=_parse_iso8601(start_date),
-        end_date=_parse_iso8601(end_date),
+        start_date=parsed_start,
+        end_date=parsed_end,
         series_ticker=series_ticker or None,
         period_interval=period_interval,
     )
@@ -151,5 +187,9 @@ def run_backtest(
     }
 
 
-if __name__ == "__main__":
+def main() -> None:
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()

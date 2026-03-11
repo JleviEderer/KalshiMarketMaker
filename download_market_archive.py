@@ -8,6 +8,8 @@ from typing import Any
 import pandas as pd
 import requests
 
+from http_utils import build_retry_session
+
 DEFAULT_START_DATE = "2021-06-30"
 DEFAULT_OUTPUT_PATH = "kalshi_all_markets_archive.csv"
 PUBLIC_ARCHIVE_URL = "https://kalshi-public-docs.s3.amazonaws.com/reporting/market_data_{day}.json"
@@ -21,8 +23,9 @@ def build_date_range(start_date: str = DEFAULT_START_DATE, end_date: str | None 
     return pd.date_range(start, end).strftime("%Y-%m-%d").tolist()
 
 
-def fetch_market_file(day_str: str, timeout: int = 30) -> pd.DataFrame:
-    response = requests.get(PUBLIC_ARCHIVE_URL.format(day=day_str), timeout=timeout)
+def fetch_market_file(day_str: str, timeout: int = 30, session: requests.Session | None = None) -> pd.DataFrame:
+    client = session or build_retry_session()
+    response = client.get(PUBLIC_ARCHIVE_URL.format(day=day_str), timeout=timeout)
     response.raise_for_status()
     payload = response.json()
     if not payload:
@@ -38,10 +41,11 @@ def download_market_archive(
     date_range = build_date_range(start_date, end_date)
     frames: list[pd.DataFrame] = []
     downloaded_days = 0
+    session = build_retry_session()
 
     for day_str in date_range:
         try:
-            frame = fetch_market_file(day_str)
+            frame = fetch_market_file(day_str, session=session)
             if frame.empty:
                 continue
             frames.append(frame)
@@ -55,7 +59,8 @@ def download_market_archive(
         raise RuntimeError("No archive data was downloaded for the requested date range")
 
     archive = pd.concat(frames, ignore_index=True)
-    target_path = Path(output_path)
+    target_path = Path(output_path).expanduser()
+    target_path.parent.mkdir(parents=True, exist_ok=True)
     archive.to_csv(target_path, index=False, encoding="utf-8")
 
     return {

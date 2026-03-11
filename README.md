@@ -71,10 +71,30 @@ Activate it:
 ### 2. Open a terminal in this folder
 
 ```bash
-cd C:\Users\justi\AppData\Local\Temp\KalshiMarketMaker
+cd KalshiMarketMaker
 ```
 
-### 3. Install MCP runtime dependencies
+### 3. Install the package
+
+For a local clone:
+
+```bash
+pip install .
+```
+
+Optional legacy extras:
+
+```bash
+pip install ".[legacy]"
+```
+
+For a direct GitHub install:
+
+```bash
+pip install "git+https://github.com/JleviEderer/KalshiMarketMaker.git@main"
+```
+
+### 4. Install MCP runtime dependencies manually if you are not using package install
 
 ```bash
 pip install -r requirements.txt
@@ -88,7 +108,7 @@ If you also want the older plotting, notebook, or legacy trading scripts:
 pip install -r requirements-legacy.txt
 ```
 
-### 4. Set the market-data base URL
+### 5. Set the market-data base URL
 
 Use the public Kalshi market-data host for the research MCP:
 
@@ -99,13 +119,13 @@ set KALSHI_MARKET_DATA_BASE_URL=https://api.elections.kalshi.com/trade-api/v2
 Optional archive path:
 
 ```bash
-set KALSHI_ARCHIVE_PATH=C:\Users\justi\AppData\Local\Temp\KalshiMarketMaker\kalshi_all_markets_archive.csv
+set KALSHI_ARCHIVE_PATH=.\kalshi_all_markets_archive.csv
 ```
 
-### 5. Run the MCP server locally
+### 6. Run the MCP server locally
 
 ```bash
-python server.py
+kalshi-research-mcp
 ```
 
 That starts the MCP server over `stdio`, which is the normal local setup for Claude Code.
@@ -126,12 +146,12 @@ Add this repo as an MCP server in your Claude Code MCP config:
     "kalshi-research": {
       "command": "python",
       "args": [
-        "C:\\Users\\justi\\AppData\\Local\\Temp\\KalshiMarketMaker\\server.py"
+        "server.py"
       ],
-      "cwd": "C:\\Users\\justi\\AppData\\Local\\Temp\\KalshiMarketMaker",
+      "cwd": "C:\\path\\to\\KalshiMarketMaker",
       "env": {
         "KALSHI_MARKET_DATA_BASE_URL": "https://api.elections.kalshi.com/trade-api/v2",
-        "KALSHI_ARCHIVE_PATH": "C:\\Users\\justi\\AppData\\Local\\Temp\\KalshiMarketMaker\\kalshi_all_markets_archive.csv"
+        "KALSHI_ARCHIVE_PATH": "C:\\path\\to\\KalshiMarketMaker\\kalshi_all_markets_archive.csv"
       }
     }
   }
@@ -157,7 +177,7 @@ If your Codex setup supports MCP config directly, use the same values as the Cla
 - working folder: this repo
 - env:
   - `KALSHI_MARKET_DATA_BASE_URL=https://api.elections.kalshi.com/trade-api/v2`
-  - `KALSHI_ARCHIVE_PATH=C:\Users\justi\AppData\Local\Temp\KalshiMarketMaker\kalshi_all_markets_archive.csv`
+  - `KALSHI_ARCHIVE_PATH=./kalshi_all_markets_archive.csv`
 
 If you use the Codex CLI, OpenAI also documents MCP commands such as:
 
@@ -168,7 +188,7 @@ codex mcp list
 and MCP server registration commands such as:
 
 ```bash
-codex mcp add kalshi-research --command python --args C:\Users\justi\AppData\Local\Temp\KalshiMarketMaker\server.py
+codex mcp add kalshi-research --command kalshi-research-mcp
 ```
 
 The exact Codex config screen or command can vary by client version, but the important point is:
@@ -277,6 +297,12 @@ Run the unit tests:
 python -m unittest discover -s tests -v
 ```
 
+Build the package:
+
+```bash
+python -m build
+```
+
 That suite now includes an MCP stdio integration smoke test that launches `server.py` and exercises:
 
 - `server_info`
@@ -316,6 +342,7 @@ Those are separate from the research MCP path. If you are using this repo as an 
 - This is a local MCP server, not a hosted service.
 - The synthetic fill model is a research approximation, not an execution replay.
 - The repo still contains legacy live-trading docs and scripts, so be careful to follow the MCP instructions above for research use.
+- The canonical install path is now `pip install .` or a GitHub package install, not ad hoc execution from a personal filesystem path.
 
 ## License
 
