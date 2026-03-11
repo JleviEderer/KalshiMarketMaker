@@ -28,6 +28,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install . build
 
+      - name: Verify console script is installed
+        run: python -c "import shutil, sys; sys.exit(0 if shutil.which('kalshi-research-mcp') else 1)"
+
       - name: Run tests
         run: python -m unittest discover -s tests -v
 

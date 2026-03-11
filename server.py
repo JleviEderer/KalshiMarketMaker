@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
@@ -16,6 +16,7 @@ from download_market_archive import DEFAULT_OUTPUT_PATH, download_market_archive
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
 DEFAULT_ARCHIVE_PATH = Path(os.getenv("KALSHI_ARCHIVE_PATH", DEFAULT_OUTPUT_PATH))
+DEFAULT_ARCHIVE_LOOKBACK_DAYS = 7
 mcp = FastMCP("Kalshi Research", json_response=True)
 
 
@@ -42,6 +43,12 @@ def _server_version() -> str:
         return "0.1.0"
 
 
+def _default_archive_window() -> tuple[str, str]:
+    resolved_end = date.today() - timedelta(days=1)
+    resolved_start = resolved_end - timedelta(days=DEFAULT_ARCHIVE_LOOKBACK_DAYS - 1)
+    return resolved_start.isoformat(), resolved_end.isoformat()
+
+
 def _to_utc_iso8601(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -65,6 +72,7 @@ def server_info() -> dict[str, Any]:
         "version": _server_version(),
         "focus": "historical market discovery, archive download, and backtesting",
         "default_archive_path": str(DEFAULT_ARCHIVE_PATH),
+        "download_archive_default_window_days": DEFAULT_ARCHIVE_LOOKBACK_DAYS,
         "tools": [
             "server_info",
             "download_archive",
@@ -76,14 +84,19 @@ def server_info() -> dict[str, Any]:
 
 @mcp.tool()
 def download_archive(
-    start_date: str = "2021-06-30",
+    start_date: str = "",
     end_date: str = "",
     output_path: str = "",
 ) -> dict[str, Any]:
     """Download the public Kalshi archive CSV used for market discovery."""
+    resolved_start_date = start_date.strip() or None
+    resolved_end_date = end_date.strip() or None
+    if resolved_start_date is None and resolved_end_date is None:
+        resolved_start_date, resolved_end_date = _default_archive_window()
+
     summary = download_market_archive(
-        start_date=start_date,
-        end_date=end_date or None,
+        start_date=resolved_start_date,
+        end_date=resolved_end_date,
         output_path=output_path or str(DEFAULT_ARCHIVE_PATH),
     )
     return summary

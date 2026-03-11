@@ -94,13 +94,19 @@ For a direct GitHub install:
 pip install "git+https://github.com/JleviEderer/KalshiMarketMaker.git@main"
 ```
 
-### 4. Install MCP runtime dependencies manually if you are not using package install
+### 4. Install MCP runtime dependencies manually only if you plan to run from source
 
 ```bash
 pip install -r requirements.txt
 ```
 
-That installs the MCP server runtime and research/backtest dependencies.
+That installs the MCP server runtime and research/backtest dependencies, but it does not install the `kalshi-research-mcp` console script.
+
+If you choose this source-only path, run the server with:
+
+```bash
+python server.py
+```
 
 If you also want the older plotting, notebook, or legacy trading scripts:
 
@@ -132,7 +138,8 @@ That starts the MCP server over `stdio`, which is the normal local setup for Cla
 
 ## Dependency Notes
 
-- `requirements.txt` is the publishable MCP-first install path.
+- `pip install .` is the canonical public install path.
+- `requirements.txt` is a source-run fallback if you want to execute `python server.py` directly.
 - `requirements-legacy.txt` adds optional dependencies used by old plotting or live/demo scripts.
 - The original pinned `pandas==2.2.2` install path is not reliable on Windows Python 3.13 because it can fall back to a failing source build. The current version range in `requirements.txt` is chosen to allow binary wheels on modern Python versions.
 
@@ -219,6 +226,9 @@ Shows:
 
 Downloads the public daily Kalshi market archive and writes a CSV locally.
 
+If you call it with no dates, it defaults to the last 7 completed days.
+For the full archive, pass an explicit `start_date`, for example `2021-06-30`.
+
 Example parameters:
 
 - `start_date`
@@ -285,7 +295,7 @@ That wording is better because:
 If another person wants to use it, they need to:
 
 1. clone the repo
-2. run `pip install -r requirements.txt`
+2. run `pip install .`
 3. add `server.py` to their MCP client config
 4. start using the tools through Claude Code
 
