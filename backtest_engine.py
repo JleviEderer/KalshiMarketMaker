@@ -12,6 +12,8 @@ from backtest_config import BacktestConfig, MarketData, Trade
 from http_utils import build_retry_session
 from mm import AbstractTradingAPI, AvellanedaMarketMaker
 
+REQUIRED_ARCHIVE_COLUMNS = {"ticker_name", "status", "date"}
+
 
 class KalshiMarketDataClient:
     """Public read-only client for market metadata and candlesticks."""
@@ -261,8 +263,13 @@ class KalshiBacktester:
         self.logger.info("Searching for '%s' in %s", search_term, file_path)
         market_info: dict[str, dict[str, Any]] = {}
 
-        try:
-            for chunk in pd.read_csv(file_path, chunksize=10_000, low_memory=False):
+        with pd.read_csv(file_path, chunksize=10_000, low_memory=False) as reader:
+            for chunk in reader:
+                missing_columns = REQUIRED_ARCHIVE_COLUMNS.difference(chunk.columns)
+                if missing_columns:
+                    missing = ", ".join(sorted(missing_columns))
+                    raise ValueError(f"Archive file is missing required columns: {missing}")
+
                 settled_chunk = chunk[chunk["status"].isin(["settled", "closed", "finalized"])].copy()
                 if search_term:
                     settled_chunk = settled_chunk[
@@ -271,20 +278,21 @@ class KalshiBacktester:
 
                 for _, row in settled_chunk.iterrows():
                     ticker = row["ticker_name"]
-                    if ticker in market_info:
-                        continue
-                    market_info[ticker] = {
+                    candidate = {
                         "ticker": ticker,
                         "title": row["ticker_name"],
                         "series_ticker": row.get("series_ticker") or row.get("report_ticker"),
                         "report_ticker": row.get("report_ticker"),
                         "close_time": row.get("date"),
                     }
+                    existing = market_info.get(ticker)
+                    if existing is None or (candidate["close_time"] or "") >= (existing.get("close_time") or ""):
+                        if existing:
+                            candidate["series_ticker"] = candidate["series_ticker"] or existing.get("series_ticker")
+                            candidate["report_ticker"] = candidate["report_ticker"] or existing.get("report_ticker")
+                        market_info[ticker] = candidate
 
-            return list(market_info.values())
-        except Exception as exc:
-            self.logger.error("Failed to read or parse %s: %s", file_path, exc)
-            return []
+        return list(market_info.values())
 
     def fetch_historical_data(
         self,

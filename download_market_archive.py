@@ -10,16 +10,25 @@ import requests
 
 from http_utils import build_retry_session
 
-DEFAULT_START_DATE = "2021-06-30"
+EARLIEST_ARCHIVE_DATE = "2021-06-30"
+DEFAULT_LOOKBACK_DAYS = 7
 DEFAULT_OUTPUT_PATH = "kalshi_all_markets_archive.csv"
 PUBLIC_ARCHIVE_URL = "https://kalshi-public-docs.s3.amazonaws.com/reporting/market_data_{day}.json"
 
 
-def build_date_range(start_date: str = DEFAULT_START_DATE, end_date: str | None = None) -> list[str]:
-    start = pd.to_datetime(start_date).date()
+def resolve_date_window(start_date: str | None = None, end_date: str | None = None) -> tuple[date, date]:
     end = pd.to_datetime(end_date).date() if end_date else date.today() - timedelta(days=1)
+    if start_date:
+        start = pd.to_datetime(start_date).date()
+    else:
+        start = end - timedelta(days=DEFAULT_LOOKBACK_DAYS - 1)
     if end < start:
         raise ValueError("end_date must be on or after start_date")
+    return start, end
+
+
+def build_date_range(start_date: str | None = None, end_date: str | None = None) -> list[str]:
+    start, end = resolve_date_window(start_date, end_date)
     return pd.date_range(start, end).strftime("%Y-%m-%d").tolist()
 
 
@@ -34,11 +43,12 @@ def fetch_market_file(day_str: str, timeout: int = 30, session: requests.Session
 
 
 def download_market_archive(
-    start_date: str = DEFAULT_START_DATE,
+    start_date: str | None = None,
     end_date: str | None = None,
     output_path: str = DEFAULT_OUTPUT_PATH,
 ) -> dict[str, Any]:
-    date_range = build_date_range(start_date, end_date)
+    resolved_start, resolved_end = resolve_date_window(start_date, end_date)
+    date_range = pd.date_range(resolved_start, resolved_end).strftime("%Y-%m-%d").tolist()
     frames: list[pd.DataFrame] = []
     downloaded_days = 0
     session = build_retry_session()
@@ -68,14 +78,14 @@ def download_market_archive(
         "rows": int(len(archive)),
         "days_requested": len(date_range),
         "days_downloaded": downloaded_days,
-        "start_date": start_date,
-        "end_date": end_date or date_range[-1],
+        "start_date": resolved_start.isoformat(),
+        "end_date": resolved_end.isoformat(),
     }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download Kalshi public market archive data")
-    parser.add_argument("--start-date", default=DEFAULT_START_DATE, help="Inclusive start date in YYYY-MM-DD format")
+    parser.add_argument("--start-date", default=None, help="Inclusive start date in YYYY-MM-DD format")
     parser.add_argument("--end-date", default=None, help="Inclusive end date in YYYY-MM-DD format")
     parser.add_argument("--output-path", default=DEFAULT_OUTPUT_PATH, help="Where to write the consolidated CSV")
     args = parser.parse_args()
