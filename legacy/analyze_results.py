@@ -1,10 +1,14 @@
+"""Legacy analysis helper for backtest result logs."""
 
+from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+RESULTS_PATH = Path(__file__).resolve().parent / "backtest_results_log.csv"
+
 # Load the backtest results
-df = pd.read_csv('backtest_results_log.csv')
+df = pd.read_csv(RESULTS_PATH)
 
 print("🔍 BACKTEST RESULTS ANALYSIS")
 print("=" * 50)

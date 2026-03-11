@@ -1,8 +1,16 @@
+"""Legacy interactive backtest helper for manual research."""
+
 import os
 from datetime import datetime, timedelta, date
 import matplotlib.pyplot as plt
 import numpy as np
 import logging
+from pathlib import Path
+
+from _bootstrap import add_repo_root_to_path
+
+REPO_ROOT = add_repo_root_to_path()
+LEGACY_DIR = Path(__file__).resolve().parent
 
 from backtest_config import BacktestConfig
 from backtest_engine import KalshiBacktester
@@ -12,7 +20,7 @@ if __name__ == "__main__":
     print("🔍 KALSHI BACKTESTER - OFFLINE DISCOVERY & RESEARCH TOOL")
     print("=" * 60)
 
-    market_data_file = './kalshi_all_markets_archive.csv'
+    market_data_file = REPO_ROOT / 'kalshi_all_markets_archive.csv'
 
     if not os.path.exists(market_data_file):
         print(f"❌ Market data file not found: {market_data_file}")
@@ -26,7 +34,7 @@ if __name__ == "__main__":
     search_term = input("\n👉 Enter a search term (e.g., FED, CPI): ").strip()
 
     if search_term:
-        settled_markets = backtester.find_settled_markets(market_data_file, search_term=search_term)
+        settled_markets = backtester.find_settled_markets(str(market_data_file), search_term=search_term)
 
         # --- ADD THIS LINE TO SORT THE RESULTS ---
         settled_markets.sort(key=lambda x: x['close_time'], reverse=True)

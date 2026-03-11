@@ -2,26 +2,12 @@
 
 Local MCP server for Kalshi historical market discovery and backtesting.
 
-This is meant to be installed locally and connected to an MCP client such as Claude Code or Codex.
+Install it locally, connect it to Claude Code or Codex, and use the MCP tools
+through your client.
 
-## What You Get
+## Quickstart
 
-After install, the MCP exposes these tools:
-
-- `server_info`
-- `download_archive`
-- `search_settled_markets`
-- `run_backtest`
-
-That lets Claude Code or Codex help with things like:
-
-- downloading Kalshi public archive data
-- finding old settled markets by keyword
-- running backtests on specific market windows
-
-## Fastest Install
-
-From a local clone:
+Local clone:
 
 ```bash
 python -m venv .venv
@@ -31,17 +17,13 @@ Windows:
 
 ```bash
 .venv\Scripts\activate
+pip install .
 ```
 
 macOS/Linux:
 
 ```bash
 source .venv/bin/activate
-```
-
-Install the package:
-
-```bash
 pip install .
 ```
 
@@ -51,17 +33,14 @@ Or install directly from GitHub:
 pip install "git+https://github.com/JleviEderer/KalshiMarketMaker.git@main"
 ```
 
-The installed command is:
+That gives you:
 
-```bash
-kalshi-research-mcp
-```
+- command: `kalshi-research-mcp`
+- tools: `server_info`, `download_archive`, `search_settled_markets`, `run_backtest`
 
-## Required Environment Variables
+Set the required environment variables:
 
-Set the public Kalshi market-data host:
-
-Windows:
+Windows `cmd.exe`:
 
 ```bash
 set KALSHI_MARKET_DATA_BASE_URL=https://api.elections.kalshi.com/trade-api/v2
@@ -75,11 +54,11 @@ export KALSHI_MARKET_DATA_BASE_URL=https://api.elections.kalshi.com/trade-api/v2
 export KALSHI_ARCHIVE_PATH=/path/to/KalshiData/kalshi_all_markets_archive.csv
 ```
 
-`KALSHI_ARCHIVE_PATH` is the local archive file this MCP will manage.
+`KALSHI_ARCHIVE_PATH` is the local archive CSV this MCP will manage.
 
-## Claude Code Setup
+## Claude Code
 
-Add this MCP server to your Claude Code config:
+If your Claude Code client uses JSON MCP config, add:
 
 ```json
 {
@@ -95,79 +74,29 @@ Add this MCP server to your Claude Code config:
 }
 ```
 
-Once added, Claude Code can call the Kalshi research tools directly.
+## Codex
 
-## Codex Setup
-
-If your Codex client supports MCP config, use the same command and env values:
-
-- command: `kalshi-research-mcp`
-- env:
-  - `KALSHI_MARKET_DATA_BASE_URL=https://api.elections.kalshi.com/trade-api/v2`
-  - `KALSHI_ARCHIVE_PATH=...your local archive path...`
-
-If you use the Codex CLI, a typical registration command is:
+Codex CLI supports a direct one-liner:
 
 ```bash
-codex mcp add kalshi-research --command kalshi-research-mcp
+codex mcp add kalshi-research --env KALSHI_MARKET_DATA_BASE_URL=https://api.elections.kalshi.com/trade-api/v2 --env KALSHI_ARCHIVE_PATH=/path/to/KalshiData/kalshi_all_markets_archive.csv -- kalshi-research-mcp
 ```
 
-## What To Ask After Install
-
-Examples:
-
-1. "Use `download_archive` to pull the last 7 completed days of Kalshi archive data."
-2. "Search settled Kalshi markets for CPI."
-3. "Run a backtest on market `...` from `...` to `...`."
-4. "Find settled Fed markets, then help me choose one to backtest."
+If you configure Codex another way, use the same command and env values.
 
 ## Tool Summary
 
-### `download_archive`
+- `server_info`: describes server defaults and archive boundaries
+- `download_archive`: downloads public Kalshi archive data to your local archive CSV
+- `search_settled_markets`: searches the local archive for settled markets by keyword
+- `run_backtest`: runs an Avellaneda-style backtest on a historical market window
 
-Downloads public Kalshi archive data to your local archive path.
+Archive safety rules:
 
-Defaults:
-
-- if no dates are passed, it downloads the last 7 completed days
-
-Important behavior:
-
-- writes are limited to the configured archive directory
+- archive reads and writes stay within the configured archive directory
 - archive files must be `.csv`
-- existing files require `allow_overwrite=true`
-- incomplete refreshes require `allow_incomplete_overwrite=true` before replacing an existing archive
-- responses include `complete_window` and `missing_days`
-
-### `search_settled_markets`
-
-Searches the local archive CSV for settled markets matching a keyword.
-
-Important behavior:
-
-- `archive_path` is limited to the configured archive directory
-- `archive_path` must point to a `.csv`
-
-### `run_backtest`
-
-Runs an Avellaneda-style backtest over a historical Kalshi market window.
-
-Typical inputs:
-
-- `market_ticker`
-- `start_date`
-- `end_date`
-- `series_ticker`
-- strategy settings such as `gamma`, `k`, `sigma`, `max_position`, and `order_expiration`
-
-## Who This Is For
-
-This is useful if you want Claude Code or Codex to help with:
-
-- Kalshi historical market research
-- market selection
-- archive-driven exploration
-- basic backtesting loops while building your own market-making or research workflow
+- overwriting existing archives requires `allow_overwrite=true`
+- incomplete refreshes require `allow_incomplete_overwrite=true`
 
 ## Local Development
 
@@ -186,13 +115,6 @@ Legacy/manual-trading extras live under [`legacy/`](legacy/README.md):
 pip install ".[legacy]"
 ```
 
-Legacy entrypoints:
-
-```bash
-python legacy/test_auth.py
-python legacy/runner.py --config legacy/config.yaml --dry-run
-```
-
 ## Local Validation
 
 Run tests:
@@ -207,9 +129,9 @@ Build the package:
 python -m build
 ```
 
-## Legacy Trading Files
+## Legacy
 
-Older live/demo trading scripts are kept under [`legacy/`](legacy/README.md).
+Older live/demo trading and research scripts are kept under [`legacy/`](legacy/README.md).
 `mm.py` stays at the repo root only because the backtester still imports its
 shared strategy primitives.
 

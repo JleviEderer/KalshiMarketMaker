@@ -1,10 +1,17 @@
+"""Legacy helper to inspect a downloaded archive CSV."""
+
+from pathlib import Path
 import pandas as pd
 from datetime import date, timedelta
+
+from _bootstrap import add_repo_root_to_path
+
+REPO_ROOT = add_repo_root_to_path()
 
 # --- Configuration ---
 # This generates the exact filename of your large CSV file.
 daybefore = date.today() - timedelta(days=1)
-file_path = f'./kalshi_all_markets_{str(daybefore)}.csv'
+file_path = REPO_ROOT / f'kalshi_all_markets_{str(daybefore)}.csv'
 # -------------------
 
 print(f"🔍 Inspecting the first 100 rows of: {file_path}")

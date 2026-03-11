@@ -1,9 +1,18 @@
+"""Legacy parameter sweep script for manual backtest experiments."""
+
 import itertools
 import os
 from datetime import datetime, timedelta
 import pandas as pd
 import logging
 import sys
+from pathlib import Path
+
+from _bootstrap import add_repo_root_to_path
+
+REPO_ROOT = add_repo_root_to_path()
+LEGACY_DIR = Path(__file__).resolve().parent
+RESULTS_PATH = LEGACY_DIR / "backtest_results_log.csv"
 
 from backtest_config import BacktestConfig
 from backtest_engine import KalshiBacktester
@@ -13,8 +22,8 @@ if __name__ == "__main__":
     print("🚀 STARTING AUTOMATED GRID SEARCH")
     print("=" * 60)
 
-    if os.path.exists("backtest_results_log.csv"):
-        os.remove("backtest_results_log.csv")
+    if RESULTS_PATH.exists():
+        os.remove(RESULTS_PATH)
         print("🗑️  Cleared old backtest results log file.")
    
 
@@ -94,5 +103,5 @@ if __name__ == "__main__":
 
     print("\n" + "=" * 60)
     print("✅ GRID SEARCH COMPLETE")
-    print(f"Results have been saved to backtest_results_log.csv")
+    print(f"Results have been saved to {RESULTS_PATH}")
     print("=" * 60)
