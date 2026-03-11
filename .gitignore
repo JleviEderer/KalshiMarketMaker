@@ -4,4 +4,21 @@
 
 __pycache__/
 
-*.txt
+.codex/
+HANDOVER.md
+.venv/
+.ipynb_checkpoints/
+attached_assets/
+.tmp-tests/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+.python-version
+kalshi_all_markets_archive.csv
+backtest_results_log.csv
+tradelog_*.csv

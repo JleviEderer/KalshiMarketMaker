@@ -1,32 +1,157 @@
-import pandas as pd
-import numpy as np
-import time
-from typing import Dict, List
-from datetime import datetime
+from __future__ import annotations
+
 import logging
 import os
+from datetime import datetime, timezone
+from typing import Any, Dict, List
 
-from mm import AvellanedaMarketMaker, AbstractTradingAPI
-from backtest_config import BacktestConfig, MarketData, HistoricalTrade, Trade
+import pandas as pd
+import requests
+
+from backtest_config import BacktestConfig, MarketData, Trade
+from http_utils import build_retry_session
+from mm import AbstractTradingAPI, AvellanedaMarketMaker
+
+
+class KalshiMarketDataClient:
+    """Public read-only client for market metadata and candlesticks."""
+
+    def __init__(self, base_url: str | None = None, timeout: int = 30, logger: logging.Logger | None = None):
+        self.base_url = (
+            base_url
+            or os.getenv("KALSHI_MARKET_DATA_BASE_URL")
+            or "https://api.elections.kalshi.com/trade-api/v2"
+        )
+        self.timeout = timeout
+        self.logger = logger or logging.getLogger("KalshiMarketData")
+        self.session = build_retry_session()
+
+    def make_request(self, method: str, path: str, params: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        response = self.session.request(
+            method=method,
+            url=f"{self.base_url}{path}",
+            params=params,
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_historical_cutoff(self) -> Dict[str, Any]:
+        return self.make_request("GET", "/historical/cutoff")
+
+    def get_market(self, market_ticker: str) -> Dict[str, Any]:
+        return self.make_request("GET", f"/markets/{market_ticker}")
+
+    def get_historical_market(self, market_ticker: str) -> Dict[str, Any]:
+        return self.make_request("GET", f"/historical/markets/{market_ticker}")
+
+    def get_event(self, event_ticker: str) -> Dict[str, Any]:
+        return self.make_request("GET", f"/events/{event_ticker}")
+
+    def get_market_details(self, market_ticker: str) -> dict[str, Any]:
+        live_market = None
+        historical_market = None
+
+        try:
+            live_market = self.get_market(market_ticker).get("market")
+        except requests.HTTPError as exc:
+            if exc.response is None or exc.response.status_code != 404:
+                raise
+
+        if live_market is None:
+            historical_market = self.get_historical_market(market_ticker).get("market")
+
+        market = live_market or historical_market or {}
+        event_ticker = market.get("event_ticker")
+        series_ticker = market.get("series_ticker")
+
+        if not series_ticker and event_ticker:
+            try:
+                event = self.get_event(event_ticker).get("event", {})
+                series_ticker = event.get("series_ticker")
+            except requests.HTTPError:
+                series_ticker = None
+
+        settlement_ts = self._parse_api_timestamp(market.get("settlement_ts") or market.get("close_time"))
+
+        return {
+            "market": market,
+            "series_ticker": series_ticker,
+            "event_ticker": event_ticker,
+            "settlement_ts": settlement_ts,
+            "market_source": "historical" if historical_market is not None else "live",
+        }
+
+    def get_market_candlesticks(
+        self,
+        market_ticker: str,
+        start_ts: int,
+        end_ts: int,
+        period_interval: int,
+        series_ticker: str | None = None,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        cutoff = self.get_historical_cutoff()
+        cutoff_ts = self._parse_api_timestamp(cutoff.get("market_settled_ts"))
+        market_details = self.get_market_details(market_ticker)
+        settlement_ts = int(market_details.get("settlement_ts") or 0)
+        resolved_series_ticker = market_details.get("series_ticker") or series_ticker
+        source = "historical" if settlement_ts and settlement_ts < cutoff_ts else "live"
+
+        if source == "live":
+            if not resolved_series_ticker:
+                raise ValueError("series_ticker is required for live candlestick queries")
+            endpoint = f"/series/{resolved_series_ticker}/markets/{market_ticker}/candlesticks"
+            params = {
+                "start_ts": start_ts,
+                "end_ts": end_ts,
+                "period_interval": period_interval,
+                "include_latest_before_start": "true",
+            }
+        else:
+            endpoint = f"/historical/markets/{market_ticker}/candlesticks"
+            params = {
+                "start_ts": start_ts,
+                "end_ts": end_ts,
+                "period_interval": period_interval,
+            }
+
+        response = self.make_request("GET", endpoint, params=params)
+        return response.get("candlesticks", []), {
+            "candlestick_source": source,
+            "cutoff_ts": cutoff_ts,
+            "series_ticker": resolved_series_ticker,
+            "event_ticker": market_details.get("event_ticker"),
+            "settlement_ts": settlement_ts,
+            "market_source": market_details.get("market_source"),
+        }
+
+    def _parse_api_timestamp(self, value: Any) -> int:
+        if value in (None, ""):
+            return 0
+        if isinstance(value, (int, float)):
+            return int(value)
+        if isinstance(value, str):
+            if value.isdigit():
+                return int(value)
+            return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
+        raise ValueError(f"Unsupported timestamp value: {value!r}")
+
 
 class MockTradingAPI(AbstractTradingAPI):
-    """Mock API for backtesting that simulates realistic market behavior"""
+    """Mock API for backtesting that simulates fills from candlestick quote ranges."""
+
     def __init__(self, market_data: List[MarketData], config: BacktestConfig):
         self.market_data = market_data
         self.config = config
         self.current_idx = 0
         self.position = 0
         self.cash = config.initial_capital
-        self.orders = {}
-        self.trades = []
+        self.orders: dict[str, dict[str, Any]] = {}
+        self.trades: list[Trade] = []
         self.order_counter = 0
 
     def get_current_data(self) -> MarketData:
-        return self.market_data[self.current_idx] if self.current_idx < len(self.market_data) else self.market_data[-1]
-
-    def advance_time(self):
-        if self.current_idx < len(self.market_data) - 1:
-            self.current_idx += 1
+        return self.market_data[min(self.current_idx, len(self.market_data) - 1)]
 
     def get_price(self) -> Dict[str, float]:
         data = self.get_current_data()
@@ -34,18 +159,32 @@ class MockTradingAPI(AbstractTradingAPI):
         no_mid = (data.no_bid + data.no_ask) / 2
         return {"yes": yes_mid, "no": no_mid}
 
-    def place_order(self, action: str, side: str, price: float, quantity: int, expiration_ts: int = None) -> str:
+    def place_order(
+        self,
+        action: str,
+        side: str,
+        price: float,
+        quantity: int,
+        expiration_ts: int | None = None,
+    ) -> str:
         order_id = str(self.order_counter)
         self.order_counter += 1
-        order = {'order_id': order_id, 'action': action, 'side': side, 'price': price, 'quantity': quantity, 'remaining_count': quantity}
-        self.orders[order_id] = order
+        self.orders[order_id] = {
+            "order_id": order_id,
+            "action": action,
+            "side": side,
+            "price": price,
+            "quantity": quantity,
+            "remaining_count": quantity,
+            "expiration_ts": expiration_ts,
+        }
         return order_id
 
     def cancel_order(self, order_id: str) -> bool:
-        if order_id in self.orders:
-            del self.orders[order_id]
-            return True
-        return False
+        if order_id not in self.orders:
+            return False
+        del self.orders[order_id]
+        return True
 
     def get_position(self) -> int:
         return self.position
@@ -53,290 +192,270 @@ class MockTradingAPI(AbstractTradingAPI):
     def get_orders(self) -> List[Dict]:
         return list(self.orders.values())
 
-    def simulate_realistic_fills(self, current_data: MarketData):
-        if not current_data.trades:
+    def simulate_realistic_fills(self, current_data: MarketData) -> None:
+        remaining_volume = max(0, current_data.volume)
+        if remaining_volume <= 0:
             return
+
         for order_id, order in list(self.orders.items()):
-            for trade in current_data.trades:
-                if self._would_order_fill(order, trade):
-                    fill_quantity = min(order['remaining_count'], trade.count)
-                    self._execute_fill(order, fill_quantity, trade.price)
-                    order['remaining_count'] -= fill_quantity
-                    if order['remaining_count'] <= 0:
-                        if order_id in self.orders:
-                            del self.orders[order_id]
-                        break
+            if remaining_volume <= 0:
+                break
 
-    def _would_order_fill(self, order: Dict, trade: HistoricalTrade) -> bool:
-        if order['side'] != trade.side:
-            return False
-        return (trade.price <= order['price']) if order['action'] == 'buy' else (trade.price >= order['price'])
+            fill_price = self._get_fill_price(order, current_data)
+            if fill_price is None:
+                continue
 
-    def _execute_fill(self, order: Dict, quantity: int, actual_trade_price: float):
-        trade_record = Trade(timestamp=self.get_current_data().timestamp, action=order['action'], side=order['side'], price=actual_trade_price, quantity=quantity, order_id=order['order_id'])
+            fill_quantity = min(order["remaining_count"], remaining_volume)
+            self._execute_fill(order, fill_quantity, fill_price)
+            order["remaining_count"] -= fill_quantity
+            remaining_volume -= fill_quantity
+
+            if order["remaining_count"] <= 0:
+                self.orders.pop(order_id, None)
+
+    def _get_fill_price(self, order: Dict[str, Any], current_data: MarketData) -> float | None:
+        if order["side"] == "yes":
+            buy_touch = current_data.yes_ask_low
+            sell_touch = current_data.yes_bid_high
+        else:
+            buy_touch = current_data.no_ask_low
+            sell_touch = current_data.no_bid_high
+
+        if order["action"] == "buy":
+            if buy_touch is None or order["price"] < buy_touch:
+                return None
+            return min(order["price"], buy_touch)
+
+        if sell_touch is None or order["price"] > sell_touch:
+            return None
+        return max(order["price"], sell_touch)
+
+    def _execute_fill(self, order: Dict[str, Any], quantity: int, actual_trade_price: float) -> None:
+        trade_record = Trade(
+            timestamp=self.get_current_data().timestamp,
+            action=order["action"],
+            side=order["side"],
+            price=actual_trade_price,
+            quantity=quantity,
+            order_id=order["order_id"],
+        )
         self.trades.append(trade_record)
-        if order['action'] == 'buy':
+
+        if order["action"] == "buy":
             self.position += quantity
             self.cash -= quantity * actual_trade_price + self.config.transaction_cost
         else:
             self.position -= quantity
             self.cash += quantity * actual_trade_price - self.config.transaction_cost
 
+
 class KalshiBacktester:
-    """Main backtesting engine"""
-    def __init__(self, config: BacktestConfig):
+    """Backtesting engine backed by Kalshi live and historical candlestick data."""
+
+    def __init__(self, config: BacktestConfig, market_data_client: KalshiMarketDataClient | None = None):
         self.config = config
-        self.logger = logging.getLogger('Backtester')
+        self.logger = logging.getLogger("Backtester")
+        self.market_data_client = market_data_client or KalshiMarketDataClient(logger=logging.getLogger("MarketData"))
 
-    def find_settled_markets(self, file_path: str, search_term: str = None) -> List[Dict]:
-        """
-        Reads our local CSV of all historical markets to find unique settled tickers.
-        """
-        self.logger.info(f"Searching for '{search_term}' in local file: {file_path}...")
+    def find_settled_markets(self, file_path: str, search_term: str | None = None) -> List[Dict]:
+        self.logger.info("Searching for '%s' in %s", search_term, file_path)
+        market_info: dict[str, dict[str, Any]] = {}
+
         try:
-            market_info = {} # Use a dictionary to automatically handle duplicates
-            chunk_size = 10000
-            dtype_spec = {'old_ticker_name': 'str'}
-
-            for chunk in pd.read_csv(file_path, chunksize=chunk_size, dtype=dtype_spec, low_memory=False):
-                settled_chunk = chunk[chunk['status'].isin(['settled', 'closed', 'finalized'])].copy()
+            for chunk in pd.read_csv(file_path, chunksize=10_000, low_memory=False):
+                settled_chunk = chunk[chunk["status"].isin(["settled", "closed", "finalized"])].copy()
                 if search_term:
-                    search_upper = search_term.upper()
-                    # CORRECTED: Only searches the 'ticker_name' column which we know exists
-                    settled_chunk = settled_chunk[settled_chunk['ticker_name'].str.upper().str.contains(search_upper, na=False)]
+                    settled_chunk = settled_chunk[
+                        settled_chunk["ticker_name"].str.upper().str.contains(search_term.upper(), na=False)
+                    ]
 
-                for index, row in settled_chunk.iterrows():
-                    ticker = row['ticker_name']
-                    if ticker not in market_info:
-                        market_info[ticker] = {
-                            'ticker': ticker,
-                            'title': row['ticker_name'],
-                            'series_ticker': row['series_ticker'], # Add this line
-                            'close_time': row.get('date')
-                        }
+                for _, row in settled_chunk.iterrows():
+                    ticker = row["ticker_name"]
+                    if ticker in market_info:
+                        continue
+                    market_info[ticker] = {
+                        "ticker": ticker,
+                        "title": row["ticker_name"],
+                        "series_ticker": row.get("series_ticker") or row.get("report_ticker"),
+                        "report_ticker": row.get("report_ticker"),
+                        "close_time": row.get("date"),
+                    }
 
-            unique_markets = list(market_info.values())
-            self.logger.info(f"Found {len(unique_markets)} unique markets matching '{search_term}'.")
-            return unique_markets
-
-        except Exception as e:
-            self.logger.error(f"Failed to read or parse market file: {e}")
+            return list(market_info.values())
+        except Exception as exc:
+            self.logger.error("Failed to read or parse %s: %s", file_path, exc)
             return []
 
-    def fetch_historical_data(self, market_ticker: str, start_date: datetime, end_date: datetime) -> List[MarketData]:
-        from mm import KalshiTradingAPI
-        logger = logging.getLogger('HistoricalData')
+    def fetch_historical_data(
+        self,
+        market_ticker: str,
+        start_date: datetime,
+        end_date: datetime,
+        *,
+        series_ticker: str | None = None,
+        period_interval: int = 1,
+    ) -> tuple[List[MarketData], Dict[str, Any]]:
+        candles, metadata = self.market_data_client.get_market_candlesticks(
+            market_ticker=market_ticker,
+            start_ts=int(start_date.timestamp()),
+            end_ts=int(end_date.timestamp()),
+            period_interval=period_interval,
+            series_ticker=series_ticker,
+        )
+        historical_data = [self._market_data_from_candle(candle) for candle in candles]
+        historical_data.sort(key=lambda entry: entry.timestamp)
+        return historical_data, metadata
 
-        # Initialize the API as before.
-        api = KalshiTradingAPI(market_ticker=market_ticker, base_url=os.getenv('LIVE_KALSHI_BASE_URL'), logger=logger, mode='live')
+    def _market_data_from_candle(self, candle: dict[str, Any]) -> MarketData:
+        price_block = candle.get("price", {})
+        yes_bid_block = candle.get("yes_bid", {})
+        yes_ask_block = candle.get("yes_ask", {})
 
-        min_ts = int(start_date.timestamp())
-        max_ts = int(end_date.timestamp())
+        fallback_price = self._normalize_price_block(price_block, "close", default=0.5)
+        yes_bid = self._normalize_price_block(yes_bid_block, "close", default=fallback_price)
+        yes_ask = self._normalize_price_block(yes_ask_block, "close", default=fallback_price)
+        yes_bid_low = self._normalize_price_block(yes_bid_block, "low", default=yes_bid)
+        yes_bid_high = self._normalize_price_block(yes_bid_block, "high", default=yes_bid)
+        yes_ask_low = self._normalize_price_block(yes_ask_block, "low", default=yes_ask)
+        yes_ask_high = self._normalize_price_block(yes_ask_block, "high", default=yes_ask)
 
-        logger.info(f"Fetching historical data for {market_ticker} from {start_date} to {end_date}")
+        if yes_ask < yes_bid:
+            yes_bid, yes_ask = yes_ask, yes_bid
+        if yes_ask_low < yes_bid_low:
+            yes_bid_low, yes_ask_low = yes_ask_low, yes_bid_low
+        if yes_ask_high < yes_bid_high:
+            yes_bid_high, yes_ask_high = yes_ask_high, yes_bid_high
 
-        # Call our new candlestick function instead of the old fetchers.
-        candlesticks = self._fetch_candlestick_data(api, market_ticker, min_ts, max_ts)
+        no_bid = max(0.0, 1 - yes_ask)
+        no_ask = min(1.0, 1 - yes_bid)
+        no_bid_low = max(0.0, 1 - yes_ask_high)
+        no_bid_high = min(1.0, 1 - yes_ask_low)
+        no_ask_low = max(0.0, 1 - yes_bid_high)
+        no_ask_high = min(1.0, 1 - yes_bid_low)
+        volume = int(float(candle.get("volume", 0) or 0))
 
-        if not candlesticks:
-            self.logger.warning(f"No candlestick data found for {market_ticker}.")
-            return []
+        return MarketData(
+            timestamp=datetime.fromtimestamp(int(candle.get("end_period_ts", 0)), tz=timezone.utc),
+            yes_bid=max(0.0, yes_bid),
+            yes_ask=min(1.0, yes_ask),
+            no_bid=no_bid,
+            no_ask=no_ask,
+            volume=volume,
+            yes_bid_low=max(0.0, yes_bid_low),
+            yes_bid_high=min(1.0, yes_bid_high),
+            yes_ask_low=max(0.0, yes_ask_low),
+            yes_ask_high=min(1.0, yes_ask_high),
+            no_bid_low=no_bid_low,
+            no_bid_high=no_bid_high,
+            no_ask_low=no_ask_low,
+            no_ask_high=no_ask_high,
+            trades=[],
+        )
 
-        # Convert candlestick data into the MarketData format the backtester expects.
-        historical_data = []
-        for candle in candlesticks:
-            ts = datetime.fromtimestamp(candle.get('ts', 0))
+    def _normalize_price_block(self, block: dict[str, Any], field: str, default: float) -> float:
+        dollars_key = f"{field}_dollars"
+        if dollars_key in block and block[dollars_key] not in (None, ""):
+            return float(block[dollars_key])
+        if field in block and block[field] is not None:
+            value = float(block[field])
+            return value / 100 if value > 1 else value
+        return default
 
-            # Use the closing price as the basis for our bid/ask spread.
-            # This is an assumption, as candlesticks don't provide explicit bid/ask data.
-            yes_close = float(candle.get('close', 50)) / 100
-
-            # Create a synthetic, small spread around the close price.
-            yes_ask = yes_close + 0.005
-            yes_bid = yes_close - 0.005
-
-            # The 'no' side is the inverse of 'yes'.
-            no_ask = 1 - yes_bid
-            no_bid = 1 - yes_ask
-
-            volume = candle.get('volume', 0)
-
-            market_data_point = MarketData(
-                timestamp=ts,
-                yes_bid=yes_bid,
-                yes_ask=yes_ask,
-                no_bid=no_bid,
-                no_ask=no_ask,
-                volume=volume,
-                trades=[] # We no longer have individual trades from this endpoint.
-            )
-            historical_data.append(market_data_point)
-
-        if not historical_data:
-            return []
-
-        historical_data.sort(key=lambda x: x.timestamp)
-        logger.info(f"Successfully converted {len(historical_data)} candlestick data points.")
-        return historical_data
-
-
-    def _fetch_candlestick_data(self, api, market_ticker: str, min_ts: int, max_ts: int) -> List[Dict]:
-        """Fetches candlestick data for a given market and time range."""
-        self.logger.info(f"Fetching candlestick data for {market_ticker}...")
-        candlesticks = []
-        cursor = None
-        # Let's assume a 1-minute interval for the candlesticks.
-        params = {'min_ts': min_ts, 'max_ts': max_ts, 'limit': 1000, 'period': '1m'}
-        endpoint = f"/markets/{market_ticker}/candlesticks"
-
-        while True:
-            try:
-                if cursor:
-                    params['cursor'] = cursor
-
-                response = api.make_request("GET", endpoint, params=params)
-
-                history_points = response.get('candlesticks', [])
-                if not history_points:
-                    break
-
-                candlesticks.extend(history_points)
-                cursor = response.get('cursor')
-
-                if not cursor:
-                    break
-            except Exception as e:
-                self.logger.error(f"Error fetching candlestick batch: {e}")
-                if '404' in str(e):
-                    self.logger.warning(f"Endpoint {endpoint} returned 404. Candlestick data may not be available for this market.")
-                break
-
-        return candlesticks
-    
-
-    def _fetch_market_history(self, api, market_ticker: str, min_ts: int, max_ts: int) -> List[Dict]:
-        market_snapshots = []
-        cursor = None
-        while True:
-            try:
-                params = {'limit': 1000, 'min_ts': min_ts, 'max_ts': max_ts}
-                if cursor:
-                    params['cursor'] = cursor
-                response = api.make_request("GET", f"/markets/{market_ticker}/history", params=params)
-                history_points = response.get('history', [])
-                if not history_points:
-                    break
-                market_snapshots.extend(history_points)
-                cursor = response.get('cursor')
-                if not cursor:
-                    break
-            except Exception as e:
-                self.logger.error(f"Error fetching market history batch: {e}")
-                break
-        return market_snapshots
-
-    def _fetch_trade_history(self, api, market_ticker: str, min_ts: int, max_ts: int) -> List[HistoricalTrade]:
-        historical_trades = []
-        cursor = None
-        endpoint = f"/markets/{market_ticker}/trades"
-        while True:
-            try:
-                params = {'limit': 1000, 'min_ts': min_ts, 'max_ts': max_ts}
-                if cursor:
-                    params['cursor'] = cursor
-                response = api.make_request("GET", endpoint, params=params)
-                trades = response.get('trades', [])
-                if not trades:
-                    break
-                for trade in trades:
-                    historical_trades.append(HistoricalTrade(timestamp=datetime.fromtimestamp(trade.get('ts', 0)), price=float(trade.get('yes_price', 0))/100, side=trade.get('side', 'yes'), count=trade.get('count', 0), trade_id=trade.get('trade_id', '')))
-                cursor = response.get('cursor')
-                if not cursor:
-                    break
-            except Exception as e:
-                self.logger.error(f"Error fetching trade history batch: {e}")
-                break
-        return historical_trades
-
-    def _merge_market_and_trade_data(self, market_snapshots: List[Dict], trades: List[HistoricalTrade]) -> List[MarketData]:
-        if not market_snapshots:
-            return []
-        df_snapshots = pd.DataFrame(market_snapshots)
-        df_snapshots['timestamp'] = pd.to_datetime(df_snapshots['ts'], unit='s').dt.round('s')
-
-        df_trades = pd.DataFrame(trades)
-        if not df_trades.empty:
-            df_trades['timestamp'] = pd.to_datetime(df_trades['timestamp']).dt.round('s')
-
-        merged_data = []
-        for index, row in df_snapshots.iterrows():
-            ts = row['timestamp']
-            relevant_trades = []
-            if not df_trades.empty:
-                trade_rows = df_trades[df_trades['timestamp'] == ts]
-                for _, trade_row in trade_rows.iterrows():
-                     relevant_trades.append(HistoricalTrade(**trade_row.to_dict()))
-            merged_data.append(MarketData(timestamp=ts, yes_bid=row['yes_bid']/100, yes_ask=row['yes_ask']/100, no_bid=row['no_bid']/100, no_ask=row['no_ask']/100, trades=relevant_trades))
-        return merged_data
-
-        def run_backtest(self, series_ticker: str, market_ticker: str, start_date: datetime, end_date: datetime) -> Dict:
-            # Pass both tickers to the data fetcher
-            market_data = self.fetch_historical_data(series_ticker, market_ticker, start_date, end_date)
+    def run_backtest(
+        self,
+        market_ticker: str,
+        start_date: datetime,
+        end_date: datetime,
+        series_ticker: str | None = None,
+        period_interval: int = 1,
+    ) -> Dict[str, Any]:
+        market_data, fetch_metadata = self.fetch_historical_data(
+            market_ticker=market_ticker,
+            start_date=start_date,
+            end_date=end_date,
+            series_ticker=series_ticker,
+            period_interval=period_interval,
+        )
         if not market_data:
-            return {'total_trades': 0, 'pnl_series': [], 'position_series': [], 'timestamps': [], 'final_pnl': 0, 'trades': [], 'win_rate': 0, 'sharpe_ratio': 0, 'max_drawdown': 0}
+            results = self._empty_results()
+            results.update(fetch_metadata)
+            return results
 
         mock_api = MockTradingAPI(market_data, self.config)
+        mm_params = {
+            key: value
+            for key, value in self.config.__dict__.items()
+            if key not in {"initial_capital", "transaction_cost", "dt"}
+        }
+        market_maker = AvellanedaMarketMaker(
+            logger=self.logger,
+            api=mock_api,
+            trade_side="yes",
+            **mm_params,
+        )
+        results = self._simulate_strategy(market_maker, mock_api, market_data)
+        results.update(fetch_metadata)
+        return results
 
-        mm_params = {k: v for k, v in self.config.__dict__.items() if k not in ['initial_capital', 'transaction_cost']}
-
-        market_maker = AvellanedaMarketMaker(logger=self.logger, api=mock_api, trade_side="yes", **mm_params)
-        return self._simulate_strategy(market_maker, mock_api, market_data)
-
-    def _simulate_strategy(self, market_maker, mock_api, market_data) -> Dict:
-        results = {'trades': [], 'pnl_series': [], 'position_series': [], 'timestamps': [], 'final_pnl': 0, 'total_trades': 0, 'win_rate': 0, 'sharpe_ratio': 0, 'max_drawdown': 0}
+    def _simulate_strategy(
+        self,
+        market_maker: AvellanedaMarketMaker,
+        mock_api: MockTradingAPI,
+        market_data: list[MarketData],
+    ) -> Dict[str, Any]:
+        results = self._empty_results()
         initial_cash = mock_api.cash
+        cadence = max(1, int(round(self.config.dt)))
 
-        for i in range(len(market_data)):
-            mock_api.current_idx = i
-            current_data = mock_api.get_current_data()
+        for idx, current_data in enumerate(market_data):
+            mock_api.current_idx = idx
             mock_api.simulate_realistic_fills(current_data)
 
-            mid_prices = mock_api.get_price()
-            mid_price = mid_prices.get("yes", 0.50)
-
-            if i % int(self.config.dt) == 0:
+            mid_price = mock_api.get_price().get("yes", 0.50)
+            if idx % cadence == 0:
                 inventory = mock_api.get_position()
                 time_elapsed = (current_data.timestamp - market_data[0].timestamp).total_seconds()
                 bid_price, ask_price = market_maker.calculate_asymmetric_quotes(mid_price, inventory, time_elapsed)
                 buy_size, sell_size = market_maker.calculate_order_sizes(inventory)
                 market_maker.manage_orders(bid_price, ask_price, buy_size, sell_size)
 
-            current_pnl = mock_api.cash + mock_api.position * mid_price - initial_cash
-            results['timestamps'].append(current_data.timestamp)
-            results['pnl_series'].append(current_pnl)
-            results['position_series'].append(mock_api.position)
+            current_pnl = mock_api.cash + (mock_api.position * mid_price) - initial_cash
+            results["timestamps"].append(current_data.timestamp)
+            results["pnl_series"].append(current_pnl)
+            results["position_series"].append(mock_api.position)
 
-        results.update({
-            'trades': mock_api.trades,
-            'total_trades': len(mock_api.trades),
-            'final_pnl': results['pnl_series'][-1] if results['pnl_series'] else 0
-        })
+        results["trades"] = mock_api.trades
+        results["total_trades"] = len(mock_api.trades)
+        results["final_pnl"] = results["pnl_series"][-1] if results["pnl_series"] else 0.0
         return results
 
-    def generate_report(self, results: Dict, market_ticker: str) -> str:
-        if not results or not results.get('timestamps'):
-             return f"No data available for market: {market_ticker}"
-        report = f"""
-KALSHI BACKTEST REPORT
-=====================================
-Market: {market_ticker}
-Period: {len(results['timestamps'])} data points
-Initial Capital: ${self.config.initial_capital:,.2f}
+    def _empty_results(self) -> Dict[str, Any]:
+        return {
+            "trades": [],
+            "pnl_series": [],
+            "position_series": [],
+            "timestamps": [],
+            "final_pnl": 0.0,
+            "total_trades": 0,
+            "win_rate": 0.0,
+            "sharpe_ratio": 0.0,
+            "max_drawdown": 0.0,
+        }
 
-PERFORMANCE METRICS
--------------------
-Final PnL: ${results.get('final_pnl', 0):,.2f}
-Return: {(results.get('final_pnl', 0) / self.config.initial_capital) * 100:.2f}%
-Total Trades: {results.get('total_trades', 0)}
-"""
-        return report.strip()
+    def generate_report(self, results: Dict[str, Any], market_ticker: str) -> str:
+        if not results.get("timestamps"):
+            return f"No data available for market: {market_ticker}"
+
+        final_pnl = results.get("final_pnl", 0.0)
+        return (
+            "KALSHI BACKTEST REPORT\n"
+            "=====================================\n"
+            f"Market: {market_ticker}\n"
+            f"Period: {len(results['timestamps'])} data points\n"
+            f"Initial Capital: ${self.config.initial_capital:,.2f}\n\n"
+            "PERFORMANCE METRICS\n"
+            "-------------------\n"
+            f"Final PnL: ${final_pnl:,.2f}\n"
+            f"Return: {(final_pnl / self.config.initial_capital) * 100:.2f}%\n"
+            f"Total Trades: {results.get('total_trades', 0)}"
+        )
